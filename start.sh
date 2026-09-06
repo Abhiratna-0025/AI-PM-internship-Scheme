@@ -20,9 +20,13 @@
 #   ./start.sh          Start backend + frontend test console
 #   ./start.sh backend  Start backend only
 #   ./start.sh frontend Start frontend only
+#   ./start.sh setup    Install deps + pull Ollama model (full project setup)
 #   ./start.sh test     Run backend tests
 #   ./start.sh build    Build backend
 #   ./start.sh stop     Stop WeatherGPT processes started on ports
+#
+# Environment overrides:
+#   OLLAMA_MODEL   Ollama model to pull/use (default: llama3.2)
 # ============================================================
 
 set -eu
@@ -33,9 +37,15 @@ FRONTEND_DIR="$PROJECT_DIR/frontend"
 
 BACKEND_PORT=8080
 FRONTEND_PORT=3000
+OLLAMA_PORT=11434
+
+# NOTE: change the default here (or export OLLAMA_MODEL before running)
+# to match whichever model your WeatherGPT backend actually expects.
+OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.2}"
 
 BACKEND_PID=""
 FRONTEND_PID=""
+OLLAMA_PID=""
 
 # ------------------------------------------------------------
 # Colors
@@ -153,11 +163,123 @@ cleanup() {
         kill "$FRONTEND_PID" 2>/dev/null || true
     fi
 
+    if [ -n "$OLLAMA_PID" ]; then
+        kill "$OLLAMA_PID" 2>/dev/null || true
+    fi
+
     success "WeatherGPT stopped."
     exit 0
 }
 
 trap cleanup INT TERM
+
+# ------------------------------------------------------------
+# Ollama
+# ------------------------------------------------------------
+
+pull_ollama_model() {
+
+    if ! command -v ollama >/dev/null 2>&1; then
+        warn "Ollama is not installed. Skipping model pull."
+        return
+    fi
+
+    info "Ensuring Ollama model '$OLLAMA_MODEL' is available..."
+
+    if ollama pull "$OLLAMA_MODEL"; then
+        success "Ollama model '$OLLAMA_MODEL' ready."
+        return
+    fi
+
+    warn "Ollama pull failed. Attempting to start the Ollama server..."
+
+    if port_in_use "$OLLAMA_PORT"; then
+        warn "Ollama already appears to be running on port $OLLAMA_PORT, but the pull still failed."
+        warn "Continuing anyway since Ollama is already up - it may already have the model, or you may be managing it yourself."
+        return
+    fi
+
+    (
+        ollama serve
+    ) >/tmp/weathergpt-ollama.log 2>&1 &
+
+    OLLAMA_PID=$!
+
+    COUNT=0
+
+    while [ "$COUNT" -lt 30 ]; do
+        if port_in_use "$OLLAMA_PORT"; then
+            break
+        fi
+
+        if ! kill -0 "$OLLAMA_PID" 2>/dev/null; then
+            warn "Ollama server failed to start. See /tmp/weathergpt-ollama.log"
+            warn "Continuing without confirming the Ollama model - the backend may fail if it needs it."
+            return
+        fi
+
+        sleep 1
+        COUNT=$((COUNT + 1))
+    done
+
+    if ! ollama pull "$OLLAMA_MODEL"; then
+        warn "Could not pull Ollama model '$OLLAMA_MODEL' even after starting the server."
+        warn "Continuing anyway - the backend may fail if it needs this model."
+        return
+    fi
+
+    success "Ollama model '$OLLAMA_MODEL' ready."
+}
+
+# ------------------------------------------------------------
+# Full project setup (dependencies + model)
+# ------------------------------------------------------------
+
+setup_project() {
+
+    require_command mvn
+    require_command npm
+
+    printf "\n"
+    printf "============================================================\n"
+    printf "                 WEATHERGPT SETUP\n"
+    printf "============================================================\n"
+    printf "\n"
+
+    if [ ! -d "$BACKEND_DIR" ]; then
+        error "Backend directory not found: $BACKEND_DIR"
+        exit 1
+    fi
+
+    if [ ! -d "$FRONTEND_DIR" ]; then
+        error "Frontend directory not found: $FRONTEND_DIR"
+        exit 1
+    fi
+
+    info "Installing backend dependencies (Maven)..."
+
+    (
+        cd "$BACKEND_DIR"
+        mvn -q dependency:resolve
+    )
+
+    success "Backend dependencies resolved."
+
+    info "Installing frontend dependencies (npm)..."
+
+    (
+        cd "$FRONTEND_DIR"
+        npm install
+    )
+
+    success "Frontend dependencies installed."
+
+    pull_ollama_model
+
+    printf "\n"
+    success "WeatherGPT setup complete."
+    printf "\n"
+}
 
 # ------------------------------------------------------------
 # Backend
@@ -224,13 +346,14 @@ start_backend() {
 # ------------------------------------------------------------
 # Frontend
 #
-# Current frontend is a static HTML API console.
-# No package.json / npm / React / Next.js required.
+# Current frontend is a React SPA built with Vite.
+# Requires Node.js / npm.
 # ------------------------------------------------------------
 
 start_frontend() {
 
-    require_command python3
+    require_command npm
+    require_command npx
 
     if [ ! -d "$FRONTEND_DIR" ]; then
         error "Frontend directory not found:"
@@ -238,37 +361,51 @@ start_frontend() {
         exit 1
     fi
 
-    if [ ! -f "$FRONTEND_DIR/test.html" ]; then
-        error "frontend/test.html not found."
+    if [ ! -f "$FRONTEND_DIR/package.json" ]; then
+        error "frontend/package.json not found."
         exit 1
     fi
 
     if port_in_use "$FRONTEND_PORT"; then
         warn "Port $FRONTEND_PORT is already in use."
         warn "Frontend may already be running."
-        info "Frontend: http://localhost:$FRONTEND_PORT/test.html"
+        info "Frontend: http://localhost:$FRONTEND_PORT"
         return
     fi
 
-    info "Starting WeatherGPT API Test Console..."
+    info "Starting WeatherGPT Frontend (Vite dev server)..."
 
     (
         cd "$FRONTEND_DIR"
 
-        python3 -m http.server "$FRONTEND_PORT"
+        npm run dev -- --port "$FRONTEND_PORT"
     ) &
 
     FRONTEND_PID=$!
 
-    sleep 2
+    info "Waiting for frontend on port $FRONTEND_PORT..."
 
-    if port_in_use "$FRONTEND_PORT"; then
-        success "Frontend started!"
-        success "Test Console: http://localhost:$FRONTEND_PORT/test.html"
-    else
-        error "Frontend failed to start."
-        exit 1
-    fi
+    COUNT=0
+
+    while [ "$COUNT" -lt 30 ]; do
+
+        if port_in_use "$FRONTEND_PORT"; then
+            success "Frontend started!"
+            success "Frontend: http://localhost:$FRONTEND_PORT"
+            return
+        fi
+
+        if ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
+            error "Frontend process stopped unexpectedly."
+            exit 1
+        fi
+
+        sleep 1
+        COUNT=$((COUNT + 1))
+    done
+
+    error "Frontend did not start within 30 seconds."
+    exit 1
 }
 
 # ------------------------------------------------------------
@@ -306,6 +443,23 @@ build_backend() {
 }
 
 # ------------------------------------------------------------
+# Build frontend
+# ------------------------------------------------------------
+
+build_frontend() {
+
+    require_command npm
+
+    info "Building WeatherGPT Frontend..."
+
+    cd "$FRONTEND_DIR"
+
+    npm run build
+
+    success "Frontend build completed."
+}
+
+# ------------------------------------------------------------
 # Stop services
 # ------------------------------------------------------------
 
@@ -334,6 +488,7 @@ case "$COMMAND" in
         printf "============================================================\n"
         printf "\n"
 
+        pull_ollama_model
         start_backend
         start_frontend
 
@@ -344,8 +499,8 @@ case "$COMMAND" in
         printf "Backend:\n"
         printf "  http://localhost:%s\n\n" "$BACKEND_PORT"
 
-        printf "API Test Console:\n"
-        printf "  http://localhost:%s/test.html\n\n" "$FRONTEND_PORT"
+        printf "Frontend (React + Vite):\n"
+        printf "  http://localhost:%s\n\n" "$FRONTEND_PORT"
 
         printf "Press Ctrl+C to stop services.\n"
         printf "\n"
@@ -367,6 +522,7 @@ case "$COMMAND" in
         ;;
 
     backend)
+        pull_ollama_model
         start_backend
 
         if [ -n "$BACKEND_PID" ]; then
@@ -382,12 +538,17 @@ case "$COMMAND" in
         fi
         ;;
 
+    setup)
+        setup_project
+        ;;
+
     test)
         run_tests
         ;;
 
     build)
         build_backend
+        build_frontend
         ;;
 
     stop)
@@ -401,6 +562,7 @@ case "$COMMAND" in
         printf "  ./start.sh\n"
         printf "  ./start.sh backend\n"
         printf "  ./start.sh frontend\n"
+        printf "  ./start.sh setup\n"
         printf "  ./start.sh test\n"
         printf "  ./start.sh build\n"
         printf "  ./start.sh stop\n"

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "nova",
+  "rsc": false,
+  "ts": true,
+  "tailwind": true,
+  "cssVariables": true,
+  "baseColor": "slate",
+  "optimize": false,
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui",
+    "lib": "@/lib"
+  },
+  "iconLibrary": "lucide"
+}
