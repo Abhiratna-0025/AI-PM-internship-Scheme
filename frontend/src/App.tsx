@@ -1,125 +1,357 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Button } from './components/ui/button';
-import { Input } from './components/ui/input';
-import { Badge } from './components/ui/badge';
-import { Avatar, AvatarFallback } from './components/ui/avatar';
+import { useVoiceInput } from './hooks/useVoiceInput';
+import { useVoiceOutput } from './hooks/useVoiceOutput';
+import { 
+  Sparkles,
+  Mic,
+  Send,
+  MapPin,
+  Wind,
+  Droplets,
+  Thermometer,
+  Cloud,
+  Radar,
+  BarChart3,
+  Bell,
+  Settings,
+  Search,
+} from 'lucide-react';
+import MobileWeatherGPT from './components/MobileWeatherGPT';
+import MobileChatToggle from './components/MobileChatToggle';
 import './App.css';
 
-type Message = {
-  id: string;
-  role: 'user' | 'bot';
-  content: string;
-  timestamp: Date;
-};
-
-type WeatherInfo = {
-  name: string;
-  country: string;
-  state?: string;
-  temp: number;
-  feelsLike: number;
-  humidity: number;
-  windSpeed: number;
-  windDeg: number;
-  description: string;
-  icon: string;
-  visibility: number;
-};
+type MessageRole = 'user' | 'bot';
 
 export default function App() {
-  const [messages, setMessages] = useState<Message[]>([
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [activeNav, setActiveNav] = useState('weather');
+  
+  const [messages, setMessages] = useState<{ id: string; role: MessageRole; content: string }[]>([
     {
       id: '1',
       role: 'bot',
       content: '👋 Hello! I\'m WeatherGPT, your AI-powered weather assistant. Ask me about weather in any city, or click below to get weather for your current location!',
-      timestamp: new Date(),
     },
   ]);
+  
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [locationStatus, setLocationStatus] = useState<'unknown' | 'checking' | 'granted' | 'denied'>('unknown');
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [currentWeather, setCurrentWeather] = useState<{
+    city: string;
+    temp: number;
+    apparentTemp: number;
+    humidity: number;
+    wind: number;
+    cloudCover: number;
+    description: string;
+  } | null>(null);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    status: sttStatus,
+    isSupported: sttSupported,
+    startListening,
+    stopListening,
+  } = useVoiceInput({
+    onTranscript: (text) => {
+      if (!text) return;
+      setInput(text);
+    },
+    onError: (err) => {
+      console.error('Voice error:', err);
+    },
+  });
+
+  const { speak, stop: stopSpeech } = useVoiceOutput();
+
+  const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening' | 'processing' | 'error'>('idle');
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!sttSupported) {
+      setVoiceStatus('error');
+      setVoiceError('Voice not supported. Try Chrome or Edge.');
+      return;
+    }
+    if (sttStatus === 'listening') {
+      setVoiceStatus('listening');
+    } else if (sttStatus === 'error') {
+      setVoiceStatus('error');
+      setVoiceError('Speech recognition error.');
+    } else if (voiceEnabled && sttStatus === 'idle' && voiceStatus === 'listening') {
+      setVoiceStatus('idle');
+    }
+  }, [sttStatus, sttSupported, voiceEnabled]);
+
+  useEffect(() => {
+    if (!voiceEnabled) {
+      stopSpeech();
+      return;
+    }
+    const botMessages = messages.filter(m => m.role === 'bot');
+    if (botMessages.length === 0) return;
+    const lastBot = botMessages[botMessages.length - 1];
+    const plainText = stripHtml(lastBot.content);
+    if (plainText && plainText.trim().length > 0) {
+      window.speechSynthesis?.cancel();
+      speak(plainText, 'en-IN');
+    }
+  }, [messages, voiceEnabled]);
+
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis?.cancel();
+      stopListening();
+    };
+  }, [stopListening]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const detectWeatherIntent = (text: string): string | null => {
-    const lower = text.toLowerCase();
-    if (lower.includes('weather') || lower.includes('temperature') || lower.includes('forecast') || lower.includes('rain') || lower.includes('sun') || lower.includes('cold') || lower.includes('hot') || lower.includes('humid') || lower.includes('climate')) {
-      const cityMatch = text.match(/(?:in|at|for|of)\s+([A-Z][a-zA-Z\s]+)/i);
-      if (cityMatch) return cityMatch[1].trim();
-      if (lower.includes('here')) return 'current location';
-      return null;
-    }
-    return null;
+  const stripHtml = (html: string): string => {
+    if (!html) return '';
+    return html
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   };
+
+  const startVoice = useCallback(() => {
+    if (!sttSupported) return;
+    window.speechSynthesis?.cancel();
+    setVoiceError(null);
+    setVoiceStatus('listening');
+    startListening();
+  }, [sttSupported, startListening]);
+
+  const stopVoice = useCallback(() => {
+    stopListening();
+    setVoiceStatus('idle');
+    setVoiceError(null);
+  }, [stopListening]);
+
+  const toggleVoice = useCallback(() => {
+    if (voiceEnabled) {
+      stopVoice();
+      setVoiceEnabled(false);
+    } else {
+      setVoiceEnabled(true);
+      startVoice();
+    }
+  }, [voiceEnabled, startVoice, stopVoice]);
+
+  const handleSend = useCallback(async () => {
+    if (!input.trim() || isLoading) return;
+    const userMessage = input.trim();
+    setInput('');
+    setIsLoading(true);
+
+    const userMsg: { id: string; role: MessageRole; content: string } = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: userMessage,
+    };
+    setMessages(prev => [...prev, userMsg]);
+
+    try {
+      let botResponse = '';
+      const city = extractCity(userMessage) || detectWeatherIntent(userMessage);
+
+      if (city) {
+        // Fetch real-time weather from official API
+        const weatherInfo = await fetchWeatherByCity(city);
+        // Fetch forecast data
+        const forecast = await fetchForecastByCity(city);
+        
+        if (weatherInfo) {
+          setCurrentWeather({
+            city: weatherInfo.name,
+            temp: weatherInfo.temp,
+            apparentTemp: weatherInfo.apparentTemp || weatherInfo.temp,
+            humidity: weatherInfo.humidity,
+            wind: weatherInfo.windSpeed,
+            cloudCover: weatherInfo.cloudCover || 0,
+            description: weatherInfo.description,
+          });
+
+          // Build weather prediction response based on API data
+          botResponse = `📍 **${weatherInfo.name}, ${weatherInfo.country}**
+
+**Current Conditions:**
+${weatherInfo.description}
+
+🌡️ **Temperature:** ${Math.round(weatherInfo.temp)}°C
+💧 **Humidity:** ${weatherInfo.humidity}%
+💨 **Wind:** ${weatherInfo.windSpeed} m/s
+☁️ **Cloud Cover:** ${weatherInfo.cloudCover || 'N/A'}%
+
+`;
+
+          // Add forecast if available
+          if (forecast && forecast.length > 0) {
+            botResponse += `**${forecast.length}-Day Forecast:**\n`;
+            forecast.slice(0, 3).forEach((day: { date: string; tempMax: number; tempMin: number; weatherDescription: string }, idx: number) => {
+              const date = new Date(day.date);
+              const dayName = idx === 0 ? 'Today' : date.toLocaleDateString('en', { weekday: 'short' });
+              botResponse += `\n${dayName}: ${Math.round(day.tempMax)}°C / ${Math.round(day.tempMin)}°C, ${day.weatherDescription}`;
+            });
+          }
+
+          // Add weather prediction/advisory based on conditions
+          botResponse += `\n\n**Weather Advisory:**\n`;
+          if (weatherInfo.humidity > 80) {
+            botResponse += `• High humidity expected - stay hydrated\n`;
+          }
+          if (weatherInfo.windSpeed > 10) {
+            botResponse += `• Strong winds - secure loose outdoor items\n`;
+          }
+          if (weatherInfo.description?.toLowerCase().includes('rain') || weatherInfo.description?.toLowerCase().includes('thunder')) {
+            botResponse += `• Precipitation likely - carry umbrella if going out\n`;
+          }
+          if (weatherInfo.temp > 35) {
+            botResponse += `• High temperature alert - avoid outdoor activities during peak hours\n`;
+          }
+          if (weatherInfo.temp < 10) {
+            botResponse += `• Cold conditions - dress warmly\n`;
+          }
+
+        } else {
+          botResponse = `❌ Sorry, I couldn't fetch weather data for **${city}**. The location may not be available in the weather database. Please try another city.`;
+        }
+      } else if (userMessage.toLowerCase().includes('hello') || userMessage.toLowerCase().includes('hi') || userMessage.toLowerCase().includes('hey')) {
+        botResponse = "👋 Hello! I'm WeatherGPT, your weather intelligence assistant. I can provide:\n\n• **Real-time weather** for any city\n• **Weather forecasts** (up to 7 days)\n• **Temperature predictions**\n• **Humidity & wind conditions**\n• **Weather advisories**\n\nTry asking: *'What's the weather in Delhi?'* or *'Will it rain in Mumbai tomorrow?'*";
+      } else if (userMessage.toLowerCase().includes('help') || userMessage.toLowerCase().includes('what can you')) {
+        botResponse = "I'm WeatherGPT - your AI weather assistant powered by official meteorological data. I can help you with:\n\n🌤️ **Current Weather** - Real-time conditions for any city\n📊 **Forecasts** - Multi-day weather predictions\n🌡️ **Temperature** - Current and forecasted temps\n💧 **Humidity & Wind** - Atmospheric conditions\n⚠️ **Weather Alerts** - Advisories based on conditions\n\n**Try asking:**\n• *'Weather in Delhi'*\n• *'Will it rain in Mumbai?'*\n• *'Temperature in London'*\n• *'Forecast for Tokyo'*";
+      } else if (userMessage.toLowerCase().includes('forecast') || userMessage.toLowerCase().includes('예측') || userMessage.toLowerCase().includes('tomorrow') || userMessage.toLowerCase().includes('week')) {
+        if (city) {
+          const forecast = await fetchForecastByCity(city);
+          if (forecast && forecast.length > 0) {
+            botResponse = `**${city} Forecast**\n\n`;
+            forecast.forEach((day: { date: string; tempMax: number; tempMin: number; weatherDescription: string }, idx: number) => {
+              const date = new Date(day.date);
+              const dayName = idx === 0 ? 'Today' : idx === 1 ? 'Tomorrow' : date.toLocaleDateString('en', { weekday: 'long' });
+              botResponse += `${dayName}: ${Math.round(day.tempMax)}°C / ${Math.round(day.tempMin)}°C - ${day.weatherDescription}\n`;
+            });
+          } else {
+            botResponse = `I couldn't retrieve the forecast for **${city}**. Please try again later.`;
+          }
+        } else {
+          botResponse = "Please specify a city for the forecast. For example: *'Forecast for Delhi'* or *'Will it rain in Mumbai tomorrow?'*";
+        }
+      } else if (userMessage.toLowerCase().includes('rain') || userMessage.toLowerCase().includes('precipitation')) {
+        if (city) {
+          const weatherInfo = await fetchWeatherByCity(city);
+          const forecast = await fetchForecastByCity(city);
+          
+          if (weatherInfo) {
+            const isRaining = weatherInfo.description?.toLowerCase().includes('rain') || 
+                             weatherInfo.description?.toLowerCase().includes('drizzle') ||
+                             weatherInfo.description?.toLowerCase().includes('shower');
+            
+            botResponse = `**Precipitation Report for ${city}**\n\n`;
+            botResponse += `Current: ${weatherInfo.description}\n`;
+            botResponse += `Humidity: ${weatherInfo.humidity}%\n\n`;
+            
+            if (isRaining) {
+              botResponse += `⚠️ **Rain is occurring now** in ${city}. Expect wet conditions.`;
+            } else {
+              botResponse += `No rain currently in ${city}.`;
+            }
+            
+            if (forecast) {
+              const rainyDays = forecast.filter((d: { weatherDescription?: string }) => 
+                d.weatherDescription?.toLowerCase().includes('rain') ||
+                d.weatherDescription?.toLowerCase().includes('drizzle') ||
+                d.weatherDescription?.toLowerCase().includes('shower')
+              );
+              
+              if (rainyDays.length > 0) {
+                botResponse += `\n**Upcoming Rain:**\n`;
+                rainyDays.slice(0, 2).forEach((day: { date: string; weatherDescription: string }, idx: number) => {
+                  const date = new Date(day.date);
+                  const dayName = idx === 0 ? 'Tomorrow' : date.toLocaleDateString('en', { weekday: 'short' });
+                  botResponse += `${dayName}: ${day.weatherDescription}\n`;
+                });
+              } else {
+                botResponse += `\nNo rain expected in the next few days.`;
+              }
+            }
+          } else {
+            botResponse = `I couldn't check rain conditions for **${city}**. Please try another location.`;
+          }
+        } else {
+          botResponse = "Which city would you like to check for rain? For example: *'Is it raining in Delhi?'* or *'Will it rain in Mumbai tomorrow?'*";
+        }
+      } else if (userMessage.toLowerCase().includes('temperature') || userMessage.toLowerCase().includes('hot') || userMessage.toLowerCase().includes('cold')) {
+        if (city) {
+          const weatherInfo = await fetchWeatherByCity(city);
+          if (weatherInfo) {
+            botResponse = `**Temperature in ${city}**\n\n`;
+            botResponse += `Current: **${Math.round(weatherInfo.temp)}°C**\n`;
+            botResponse += `Feels like: ${Math.round(weatherInfo.apparentTemp || weatherInfo.temp)}°C\n`;
+            botResponse += `Description: ${weatherInfo.description}\n\n`;
+            
+            if (weatherInfo.temp > 30) {
+              botResponse += `🔥 It's quite hot in ${city} today. Stay hydrated and avoid prolonged sun exposure.`;
+            } else if (weatherInfo.temp > 20) {
+              botResponse += `☀️ Pleasant weather in ${city}. Good conditions for outdoor activities.`;
+            } else if (weatherInfo.temp > 10) {
+              botResponse += `🌤️ Cool weather in ${city}. A light jacket may be needed.`;
+            } else {
+              botResponse += `🥶 Cold conditions in ${city}. Dress warmly if going outside.`;
+            }
+          } else {
+            botResponse = `I couldn't get temperature data for **${city}**. Please try another city.`;
+          }
+        } else {
+          botResponse = "Which city's temperature would you like to know? For example: *'Temperature in Delhi'*";
+        }
+      } else {
+        botResponse = "I can help you with weather information! Try asking about:\n\n• **Current weather** - *'Weather in Delhi'*\n• **Forecast** - *'Forecast for Mumbai'*\n• **Rain check** - *'Is it raining in London?'*\n• **Temperature** - *'Temperature in Tokyo'*\n\nJust mention a city name!";
+      }
+
+      const introMsg: { id: string; role: MessageRole; content: string } = {
+        id: (Date.now() + 1).toString(),
+        role: 'bot',
+        content: botResponse,
+      };
+      setMessages(prev => [...prev, introMsg]);
+    } catch (error) {
+      console.error('Error:', error);
+      const errMsg: { id: string; role: MessageRole; content: string } = {
+        id: (Date.now() + 1).toString(),
+        role: 'bot',
+        content: '⚠️ Unable to fetch weather data right now. Please try again later.',
+      };
+      setMessages(prev => [...prev, errMsg]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [input, isLoading]);
 
   const extractCity = (text: string): string | null => {
-    const pattern1 = /(?:in|at|for|of)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/;
-    const match1 = text.match(pattern1);
-    if (match1 && match1[1]) {
-      return match1[1].trim();
-    }
-
-    const pattern2 = /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:weather|temperature|forecast|climate|conditions)/;
-    const match2 = text.match(pattern2);
-    if (match2 && match2[1]) {
-      return match2[1].trim();
-    }
-
-    const pattern3 = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b/;
-    const match3 = text.match(pattern3);
-    if (match3 && match3[1]) {
-      const city = match3[1].trim();
-      const skipWords = ['Will', 'What', 'How', 'Is', 'Can', 'The', 'This', 'That', 'Here', 'Today', 'Tomorrow', 'Yesterday', 'By', 'In', 'At', 'For', 'Help', 'Hello', 'Hi', 'Hey', 'Give', 'Me', 'Do', 'Does', 'Are', 'There'];
-      if (!skipWords.includes(city)) {
-        return city;
-      }
-    }
-
+    const pattern = /(?:in|at|for|of)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/;
+    const match = text.match(pattern);
+    if (match && match[1]) return match[1].trim();
     return null;
   };
 
-  const getWeatherIcon = (icon: string) => {
-    const iconMap: Record<string, string> = {
-      '01d': '☀️', '01n': '🌙',
-      '02d': '⛅', '02n': '☁️',
-      '03d': '☁️', '03n': '☁️',
-      '04d': '☁️', '04n': '☁️',
-      '09d': '🌧️', '09n': '🌧️',
-      '10d': '🌦️', '10n': '🌧️',
-      '11d': '⛈️', '11n': '⛈️',
-      '13d': '❄️', '13n': '❄️',
-      '50d': '🌫️', '50n': '🌫️',
-    };
-    return iconMap[icon] || '🌤️';
-  };
-
-  const fetchWeatherByLocation = async (lat: number, lon: number) => {
-    try {
-      const res = await fetch(`http://localhost:8080/api/weather/current?lat=${lat}&lon=${lon}`);
-      const data = await res.json();
-      if (data.success && data.data) {
-        const apiData = data.data as any;
-        return {
-          name: apiData.location?.name || 'Unknown',
-          country: apiData.location?.country || 'Unknown',
-          state: apiData.location?.admin1 || undefined,
-          temp: apiData.temperature,
-          feelsLike: apiData.apparentTemperature,
-          humidity: apiData.humidity,
-          windSpeed: apiData.windSpeed,
-          windDeg: apiData.windDirection,
-          description: apiData.weatherDescription,
-          icon: getWeatherIcon(apiData.weatherCode),
-          visibility: apiData.visibility,
-        };
-      }
-    } catch (error) {
-      console.error('Weather fetch error:', error);
+  const detectWeatherIntent = (text: string): string | null => {
+    const lower = text.toLowerCase();
+    if (lower.includes('weather') || lower.includes('temperature') || lower.includes('forecast')) {
+      const cityMatch = text.match(/(?:in|at|for|of)\s+([A-Z][a-zA-Z\s]+)/i);
+      if (cityMatch) return cityMatch[1].trim();
     }
     return null;
   };
@@ -133,14 +365,12 @@ export default function App() {
         return {
           name: apiData.location.name,
           country: apiData.location.country,
-          state: apiData.location.admin1 || undefined,
           temp: apiData.temperature,
-          feelsLike: apiData.apparentTemperature,
+          apparentTemp: apiData.apparentTemperature,
           humidity: apiData.humidity,
           windSpeed: apiData.windSpeed,
-          windDeg: apiData.windDirection,
           description: apiData.weatherDescription,
-          icon: getWeatherIcon(apiData.weatherCode),
+          cloudCover: apiData.cloudCover || 0,
           visibility: apiData.visibility,
         };
       }
@@ -150,16 +380,18 @@ export default function App() {
     return null;
   };
 
-  const fetchForecast = async (city: string) => {
+  const fetchForecastByCity = async (city: string) => {
     try {
-      const res = await fetch(`http://localhost:8080/api/weather/forecast?location=${encodeURIComponent(city)}&days=3`);
+      const res = await fetch(`http://localhost:8080/api/weather/forecast?location=${encodeURIComponent(city)}&days=7`);
       const data = await res.json();
       if (data.success && data.data) {
         return (data.data as any).days.map((day: any) => ({
           date: day.date,
           tempMax: day.tempMax,
           tempMin: day.tempMin,
-          description: day.weatherDescription,
+          weatherDescription: day.weatherDescription,
+          precipitation: day.precipitationSum || 0,
+          humidity: day.humidityMax || 0,
         }));
       }
     } catch (error) {
@@ -168,412 +400,170 @@ export default function App() {
     return null;
   };
 
-  const generateTips = (weather: WeatherInfo): string => {
-    const tips: string[] = [];
-
-    if (weather.humidity >= 80) {
-      tips.push(' 💧 High humidity today — stay hydrated and consider a light, breathable outfit.');
-    } else if (weather.humidity < 30) {
-      tips.push(' 💨 Low humidity — the air is dry, so keep some water handy and use lip balm or moisturizer if needed.');
-    }
-
-    if (weather.windSpeed >= 8) {
-      tips.push(' 💨 Strong winds expected — secure loose outdoor items and be careful with umbrellas.');
-    } else if (weather.windSpeed >= 5) {
-      tips.push(' 🌬️ Breezy conditions — a wind-resistant jacket could come in handy.');
-    }
-
-    if (weather.feelsLike > weather.temp + 3) {
-      tips.push(' 🌡️ It feels hotter than the actual temperature — light clothing and shade breaks are recommended.');
-    } else if (weather.feelsLike < weather.temp - 3) {
-      tips.push(' 🥶 It feels colder than the thermometer reads — layer up if you are heading out.');
-    }
-
-    if (weather.description.toLowerCase().includes('rain') || weather.description.toLowerCase().includes('drizzle') || weather.description.toLowerCase().includes('shower')) {
-      tips.push(' ☔ Carry an umbrella or a raincoat — you might get wet between buildings or while commuting.');
-    }
-    if (weather.description.toLowerCase().includes('thunder')) {
-      tips.push(' ⛈️ Thunderstorm activity possible — avoid open fields and tall isolated trees if outdoors.');
-    }
-    if (weather.description.toLowerCase().includes('snow') || weather.description.toLowerCase().includes('ice')) {
-      tips.push(' ❄️ Slippery surfaces likely — drive or walk carefully and use appropriate footwear.');
-    }
-
-    if (weather.visibility < 2000) {
-      tips.push(' 👁️ Visibility is quite low — take extra caution while driving or crossing roads.');
-    }
-
-    if (weather.temp > 35) {
-      tips.push(' 🔥 Very hot day — limit outdoor activity during peak hours (11 AM–3 PM) and drink plenty of water.');
-    } else if (weather.temp > 30) {
-      tips.push(' ☀️ Warm day ahead — stay in the shade when possible and keep up your water intake.');
-    } else if (weather.temp < 10) {
-      tips.push(' 🧥 Chilly weather — a warm jacket, scarf, and gloves will make being outside more comfortable.');
-    } else if (weather.temp < 15) {
-      tips.push(' 🍂 Cool day — a light jacket or sweater should be enough for most outdoor plans.');
-    }
-
-    if (tips.length === 0) {
-      tips.push(' 🌤️ Pleasant conditions — a great day for a walk, outdoor plans, or just enjoying the weather!');
-    }
-
-    return tips.slice(0, 3).join('');
-  };
-
-  const generateForecastText = (forecast: { date: string; tempMax: number; tempMin: number; description: string }[]): string => {
-    if (!forecast || forecast.length === 0) return '';
-
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const lines: string[] = [];
-
-    forecast.forEach((day, idx) => {
-      const dateObj = new Date(day.date);
-      const dayName = dayNames[dateObj.getDay()];
-      const tempRange = `${Math.round(day.tempMin)}°–${Math.round(day.tempMax)}°C`;
-      let summary = '';
-
-      const desc = day.description.toLowerCase();
-
-      if (desc.includes('rain') || desc.includes('drizzle') || desc.includes('shower')) {
-        summary = 'with rain';
-        if (desc.includes('thunder')) summary = 'with thunderstorms';
-        else if (desc.includes('heavy')) summary = 'with heavy rain';
-      } else if (desc.includes('cloud')) {
-        summary = 'cloudy';
-      } else if (desc.includes('sun') || desc.includes('clear')) {
-        summary = 'sunny and clear';
-      } else if (desc.includes('fog') || desc.includes('mist')) {
-        summary = 'foggy with reduced visibility';
-      } else if (desc.includes('snow') || desc.includes('ice')) {
-        summary = 'snowy';
-      } else {
-        summary = desc;
-      }
-
-      const trend = day.tempMax > 30 ? 'hot' : day.tempMax > 25 ? 'warm' : day.tempMax > 15 ? 'mild' : 'cool';
-      const feel = day.tempMax - day.tempMin > 10 ? ' with a big day-night swing' : '';
-
-      lines.push(
-        `${idx === 0 ? 'Today' : dayName}, ${dateObj.toLocaleDateString('en', { month: 'short', day: 'numeric' })}: ` +
-        `${summary}, ${tempRange}, ${trend} conditions${feel}.`
-      );
-    });
-
-    return lines.join('\n');
-  };
-
-  const getUserLocation = useCallback(async () => {
-    setLocationStatus('checking');
-    if (!navigator.geolocation) {
-      setLocationStatus('denied');
-      const msg: Message = {
-        id: Date.now().toString(),
-        role: 'bot',
-        content: '⚠️ Geolocation is not supported by your browser. Please enter a city name manually.',
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, msg]);
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        setUserLocation({ latitude, longitude });
-        setLocationStatus('granted');
-
-        const weather = await fetchWeatherByLocation(latitude, longitude);
-        if (weather) {
-          const card = `
-            <div class="weather-card">
-              <div class="weather-main">
-                <div class="weather-location"><h3>${weather.name}${weather.state ? ', ' + weather.state : ''}, ${weather.country}</h3></div>
-                <div class="weather-temp-row"><span class="weather-icon">${weather.icon}</span><span class="weather-temp">${Math.round(weather.temp)}°C</span></div>
-                <p class="weather-desc">${weather.description}</p>
-              </div>
-              <div class="weather-details">
-                <div class="detail"><span class="detail-icon">🌡️</span><span>Feels like ${Math.round(weather.feelsLike)}°C</span></div>
-                <div class="detail"><span class="detail-icon">💧</span><span>Humidity: ${weather.humidity}%</span></div>
-                <div class="detail"><span class="detail-icon">💨</span><span>Wind: ${weather.windSpeed} m/s</span></div>
-                <div class="detail"><span class="detail-icon">👁️</span><span>Visibility: ${(weather.visibility / 1000).toFixed(1)} km</span></div>
-              </div>
-            </div>
-          `;
-          const msg1: Message = {
-            id: Date.now().toString(),
-            role: 'bot',
-            content: `📍 **Location detected:** ${weather.name}, ${weather.country}${weather.state ? ', ' + weather.state : ''}\n\n`,
-            timestamp: new Date(),
-          };
-          const msg2: Message = {
-            id: (Date.now() + 1).toString(),
-            role: 'bot',
-            content: card,
-            timestamp: new Date(),
-          };
-          setMessages(prev => [...prev, msg1, msg2]);
-        }
-      },
-      async (error) => {
-        console.error('Geolocation error:', error);
-        setLocationStatus('denied');
-        const msg1: Message = {
-          id: Date.now().toString(),
-          role: 'bot',
-          content: '📍 Location access was denied. Showing weather for a default location. You can ask for any city!',
-          timestamp: new Date(),
-        };
-        setMessages(prev => [...prev, msg1]);
-        const weather = await fetchWeatherByCity('Delhi');
-        if (weather) {
-          const card = `
-            <div class="weather-card">
-              <div class="weather-main">
-                <div class="weather-location"><h3>${weather.name}, ${weather.country}</h3></div>
-                <div class="weather-temp-row"><span class="weather-icon">${weather.icon}</span><span class="weather-temp">${Math.round(weather.temp)}°C</span></div>
-                <p class="weather-desc">${weather.description}</p>
-              </div>
-              <div class="weather-details">
-                <div class="detail"><span class="detail-icon">🌡️</span><span>Feels like ${Math.round(weather.feelsLike)}°C</span></div>
-                <div class="detail"><span class="detail-icon">💧</span><span>Humidity: ${weather.humidity}%</span></div>
-                <div class="detail"><span class="detail-icon">💨</span><span>Wind: ${weather.windSpeed} m/s</span></div>
-                <div class="detail"><span class="detail-icon">👁️</span><span>Visibility: ${(weather.visibility / 1000).toFixed(1)} km</span></div>
-              </div>
-            </div>
-          `;
-          const msg2: Message = {
-            id: (Date.now() + 1).toString(),
-            role: 'bot',
-            content: card,
-            timestamp: new Date(),
-          };
-          setMessages(prev => [...prev, msg2]);
-        }
-      }
-    );
-  }, []);
-
-  const handleSend = useCallback(async () => {
-    if (!input.trim() || isLoading) return;
-
-    const userMessage = input.trim();
-    setInput('');
-    setIsLoading(true);
-
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: userMessage,
-      timestamp: new Date(),
-    };
-    setMessages(prev => [...prev, userMsg]);
-
-    try {
-      let botResponse = '';
-      let weatherInfo: WeatherInfo | null = null;
-      let forecastInfo: { date: string; tempMax: number; tempMin: number; description: string }[] | null = null;
-
-      const city = extractCity(userMessage) || detectWeatherIntent(userMessage);
-
-      if (userMessage.toLowerCase().includes('my location') || userMessage.toLowerCase().includes('current location') || userMessage.toLowerCase().includes('where i am')) {
-        if (userLocation) {
-          weatherInfo = await fetchWeatherByLocation(userLocation.latitude, userLocation.longitude);
-          if (weatherInfo) forecastInfo = await fetchForecast(weatherInfo.name);
-          botResponse = `📍 Here's the weather for your **current location** in ${weatherInfo?.name || 'your area'}:`;
-          const locTips = weatherInfo ? generateTips(weatherInfo) : '';
-          const locForecast = (weatherInfo && forecastInfo) ? generateForecastText(forecastInfo) : '';
-          let locFull = botResponse;
-          if (locTips) locFull += '\n\n' + locTips;
-          if (locForecast) locFull += '\n\n**3-day outlook:**\n' + locForecast;
-          botResponse = locFull;
-        } else {
-          botResponse = '📍 Let me detect your location first...';
-          getUserLocation();
-          setIsLoading(false);
-          return;
-        }
-      } else if (city) {
-        weatherInfo = await fetchWeatherByCity(city);
-        if (weatherInfo) forecastInfo = await fetchForecast(weatherInfo.name);
-        if (weatherInfo) {
-          botResponse = `Here's the weather for **${weatherInfo.name}${weatherInfo.state ? ', ' + weatherInfo.state : ''}, ${weatherInfo.country}**:`;
-        } else {
-          botResponse = `❌ Sorry, I couldn't find weather data for **${city}**. Please check the city name and try again.`;
-        }
-      } else {
-        const greetings = [
-          "I'm here to help with weather information! 🌤️",
-          "Try asking me about the weather in a specific city!",
-          "I can tell you the temperature, forecast, and more!",
-          "What city would you like to know about?",
-        ];
-        botResponse = greetings[Math.floor(Math.random() * greetings.length)];
-
-        if (userMessage.toLowerCase().includes('hello') || userMessage.toLowerCase().includes('hi') || userMessage.toLowerCase().includes('hey')) {
-          botResponse = "Hello! 👋 I'm WeatherGPT. Ask me about weather in any city! For example: *'What's the weather in Delhi?'* or click the button below to get weather for your **current location**.";
-        } else if (userMessage.toLowerCase().includes('help')) {
-          botResponse = "I can help you with:\n\n🌤️ Current weather conditions\n📊 3-day forecasts\n🌡️ Temperature & feels like\n💧 Humidity & wind info\n📍 Your current location weather\n\nJust ask me about any city! For example: *'Weather in London'* or click the 👇 button below.";
-        } else if (userMessage.toLowerCase().includes('thank')) {
-          botResponse = "You're welcome! 😊 Feel free to ask anytime about weather. Stay informed! 🌤️";
-        } else if (userMessage.toLowerCase().includes('current') || userMessage.toLowerCase().includes('here')) {
-          getUserLocation();
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      if (weatherInfo && !botResponse.includes('**')) {
-        botResponse = `Here's the weather for **${weatherInfo.name}${weatherInfo.state ? ', ' + weatherInfo.state : ''}, ${weatherInfo.country}**:`;
-      }
-
-      const tips = weatherInfo ? generateTips(weatherInfo) : '';
-      const forecastText = (weatherInfo && forecastInfo) ? generateForecastText(forecastInfo) : '';
-
-      let fullResponse = botResponse;
-      if (tips) fullResponse += '\n\n' + tips;
-      if (forecastText) fullResponse += '\n\n**3-day outlook:**\n' + forecastText;
-
-      const introMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'bot',
-        content: fullResponse,
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, introMsg]);
-
-      if (weatherInfo) {
-        setTimeout(() => {
-          const card = `
-            <div class="weather-card">
-              <div class="weather-main">
-                <div class="weather-location"><h3>${weatherInfo.name}${weatherInfo.state ? ', ' + weatherInfo.state : ''}, ${weatherInfo.country}</h3></div>
-                <div class="weather-temp-row"><span class="weather-icon">${weatherInfo.icon}</span><span class="weather-temp">${Math.round(weatherInfo.temp)}°C</span></div>
-                <p class="weather-desc">${weatherInfo.description}</p>
-              </div>
-              <div class="weather-details">
-                <div class="detail"><span class="detail-icon">🌡️</span><span>Feels like ${Math.round(weatherInfo.feelsLike)}°C</span></div>
-                <div class="detail"><span class="detail-icon">💧</span><span>Humidity: ${weatherInfo.humidity}%</span></div>
-                <div class="detail"><span class="detail-icon">💨</span><span>Wind: ${weatherInfo.windSpeed} m/s</span></div>
-                <div class="detail"><span class="detail-icon">👁️</span><span>Visibility: ${(weatherInfo.visibility / 1000).toFixed(1)} km</span></div>
-              </div>
-              ${forecastInfo && forecastInfo.length > 0 ? `
-                <div class="forecast-section">
-                  <h4>3-DAY FORECAST</h4>
-                  <div class="forecast-grid">
-                    ${forecastInfo.map(day => `
-                      <div class="forecast-day">
-                        <span class="forecast-date">${new Date(day.date).toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
-                        <span class="forecast-temp">${Math.round(day.tempMax)}° / ${Math.round(day.tempMin)}°</span>
-                        <span class="forecast-desc">${day.description}</span>
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
-            </div>
-          `;
-          const cardMsg: Message = {
-            id: (Date.now() + 2).toString(),
-            role: 'bot',
-            content: card,
-            timestamp: new Date(),
-          };
-          setMessages(prev => [...prev, cardMsg]);
-        }, 100);
-      }
-    } catch (error) {
-      const errMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'bot',
-        content: '⚠️ Oops! Something went wrong. Please try again.',
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, errMsg]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [input, isLoading, userLocation]);
-
   const quickActions = [
     { label: '📍 My Location', action: '' },
     { label: '🌤️ Delhi', action: 'Weather in Delhi' },
     { label: '🌧️ Mumbai', action: 'Is it raining in Mumbai?' },
     { label: '❄️ London', action: 'Temperature in London' },
-    { label: '☀️ Tokyo', action: 'Forecast for Tokyo' },
   ];
 
-  return (
-    <div className="chatbot-app">
-      <header className="chatbot-header">
-        <div className="chatbot-logo">
-          <Avatar className="logo-avatar">
-            <AvatarFallback className="logo-fallback">🌤️</AvatarFallback>
-          </Avatar>
-          <div className="logo-text">
-            <h1>WeatherGPT</h1>
-            <p>AI-Powered Weather Intelligence</p>
-          </div>
-        </div>
-        <div className="header-actions">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={getUserLocation}
-            disabled={locationStatus === 'checking'}
-            className="locate-btn"
-          >
-            {locationStatus === 'checking' ? '⏳ Detecting...' : locationStatus === 'granted' ? '✓ Located' : '📍 My Location'}
-          </Button>
-          <Badge variant="secondary" className="status-badge">● Online</Badge>
-        </div>
-      </header>
+  // Mobile view: show mobile chat
+  if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+    return (
+      <MobileWeatherGPT />
+    );
+  }
 
-      <main className="chatbot-main">
-        <div className="chat-messages">
+  // Desktop view: clean conversational interface
+  return (
+    <div className="simple-weathergpt">
+      {/* Sidebar */}
+      <aside className="sidebar">
+        <div className="sidebar-logo">
+          <Sparkles size={24} />
+        </div>
+        <nav className="sidebar-nav">
+          <button
+            className={`sidebar-item ${activeNav === 'weather' ? 'active' : ''}`}
+            onClick={() => setActiveNav('weather')}
+            title="Nowcasting"
+          >
+            <Radar size={20} />
+          </button>
+          <button
+            className={`sidebar-item ${activeNav === 'forecast' ? 'active' : ''}`}
+            onClick={() => setActiveNav('forecast')}
+            title="7-Day Forecast"
+          >
+            <BarChart3 size={20} />
+          </button>
+          <button
+            className={`sidebar-item ${activeNav === 'alerts' ? 'active' : ''}`}
+            onClick={() => setActiveNav('alerts')}
+            title="Alerts"
+          >
+            <Bell size={20} />
+          </button>
+        </nav>
+        <div className="sidebar-bottom">
+          <button className="sidebar-exit" title="Settings">
+            <Settings size={18} />
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="main-content">
+        {/* Header */}
+        <header className="simple-header">
+          <div className="header-logo">
+            <div className="logo-icon">
+              <Sparkles size={22} />
+            </div>
+            <div className="logo-text">
+              <h1>WeatherGPT</h1>
+              <p className="logo-subtitle">AI-Powered Weather Intelligence</p>
+            </div>
+          </div>
+          <div className="header-controls">
+            <div className="header-quick-actions">
+              <button className="quick-action-btn" title="Add Location">
+                <MapPin size={16} />
+              </button>
+              <button className="quick-action-btn" title="Search">
+                <Search size={16} />
+              </button>
+              <button className="quick-action-btn" title="Notifications">
+                <Bell size={16} />
+              </button>
+            </div>
+            <button
+              className={`voice-toggle ${voiceEnabled ? 'active' : ''}`}
+              onClick={toggleVoice}
+              disabled={!sttSupported}
+            >
+              {voiceEnabled ? (
+                <>
+                  <Mic size={18} />
+                  <span>Stop Voice</span>
+                </>
+              ) : (
+                <>
+                  <Mic size={18} />
+                  <span>Voice</span>
+                </>
+              )}
+            </button>
+          </div>
+        </header>
+
+        {/* Current Weather Card (if available) */}
+        {currentWeather && (
+          <div className="weather-card-simple">
+            <div className="weather-card-header">
+              <MapPin size={16} />
+              <span>{currentWeather.city}</span>
+            </div>
+            <div className="weather-card-main">
+              <span className="weather-temp">{Math.round(currentWeather.temp)}°C</span>
+              <span className="weather-desc">{currentWeather.description}</span>
+            </div>
+            <div className="weather-card-metrics">
+              <div className="metric">
+                <Thermometer size={14} />
+                <span>{currentWeather.temp}°C (feels {Math.round(currentWeather.apparentTemp)}°C)</span>
+              </div>
+              <div className="metric">
+                <Droplets size={14} />
+                <span>{currentWeather.humidity}% humidity</span>
+              </div>
+              <div className="metric">
+                <Wind size={14} />
+                <span>{currentWeather.wind} m/s wind</span>
+              </div>
+              <div className="metric">
+                <Cloud size={14} />
+                <span>{currentWeather.cloudCover}% cloud</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Messages */}
+        <div className="simple-chat">
           {messages.map((msg) => (
             <div key={msg.id} className={`message ${msg.role}`}>
-              <Avatar className="message-avatar">
-                <AvatarFallback>{msg.role === 'bot' ? '🌤️' : '👤'}</AvatarFallback>
-              </Avatar>
-              <div className="message-content">
-                {msg.role === 'bot' ? (
-                  <div dangerouslySetInnerHTML={{ __html: msg.content }} />
-                ) : (
-                  <p>{msg.content}</p>
-                )}
-                <span className="message-time">
-                  {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
+              <div className="message-bubble">
+                {msg.content.split('\n').map((line, idx) => (
+                  <p key={idx} className={line.startsWith('**') ? 'message-bold' : ''}>
+                    {line.replace(/\*\*/g, '')}
+                  </p>
+                ))}
               </div>
             </div>
           ))}
           {isLoading && (
             <div className="message bot typing">
-              <Avatar className="message-avatar">
-                <AvatarFallback>🌤️</AvatarFallback>
-              </Avatar>
-              <div className="message-content">
-                <div className="typing-indicator">
-                  <span></span><span></span><span></span>
-                </div>
+              <div className="typing-dots">
+                <span></span><span></span><span></span>
               </div>
             </div>
           )}
           <div ref={messagesEndRef} />
         </div>
 
+        {/* Quick Actions */}
         {messages.length <= 1 && (
           <div className="quick-actions">
-            <p className="quick-actions-title">Try asking me or click a button:</p>
+            <p>Try asking or click a button:</p>
             <div className="quick-actions-grid">
               {quickActions.map((qa, idx) => (
-                <Button
+                <button
                   key={idx}
-                  variant={qa.action === '' ? 'default' : 'outline'}
-                  className={qa.action === '' ? 'locate-quick-btn' : 'quick-action-btn'}
+                  className={`quick-btn ${qa.action === '' ? 'primary' : 'secondary'}`}
                   onClick={() => {
                     if (qa.action === '') {
-                      getUserLocation();
+                      // TODO: implement geolocation
                     } else {
                       setInput(qa.action);
                       inputRef.current?.focus();
@@ -581,18 +571,29 @@ export default function App() {
                   }}
                 >
                   {qa.label}
-                </Button>
+                </button>
               ))}
             </div>
           </div>
         )}
 
-        <div className="chat-input-area">
-          <div className="chat-input-container">
-            <Input
+        {/* Voice Status */}
+        {voiceEnabled && (
+          <div className={`voice-status ${voiceStatus}`}>
+            <span className="voice-dot"></span>
+            {voiceStatus === 'listening' && 'Listening...'}
+            {voiceStatus === 'processing' && 'Processing...'}
+            {voiceStatus === 'error' && voiceError}
+          </div>
+        )}
+
+        {/* Input Area */}
+        <div className="input-area">
+          <div className="input-container">
+            <input
               ref={inputRef}
               type="text"
-              placeholder="Ask about weather... (e.g., 'What's the weather in Delhi?')"
+              placeholder={voiceEnabled ? 'Speak your question…' : "Ask about weather... (e.g., 'What's the weather in Delhi?')"}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
@@ -601,21 +602,38 @@ export default function App() {
                   handleSend();
                 }
               }}
-              className="chat-input"
+              className={voiceEnabled ? 'voice-active' : ''}
             />
-            <Button onClick={handleSend} disabled={!input.trim() || isLoading} className="send-btn">
-              {isLoading ? '...' : 'Send'}
-            </Button>
+            <button
+              className="mic-btn"
+              onClick={toggleVoice}
+              disabled={!sttSupported}
+            >
+              <Mic size={20} />
+            </button>
+            <button
+              className="send-btn"
+              onClick={handleSend}
+              disabled={!input.trim() || isLoading}
+            >
+              <Send size={18} />
+            </button>
           </div>
-          <div className="input-hint">
-            Press Enter to send • Ask about any city or click 📍 for your location
-          </div>
+          <p className="input-hint">
+            {voiceEnabled
+              ? '🎤 Voice active — speak, then send'
+              : 'Press Enter to send • Ask about any city'}
+          </p>
         </div>
       </main>
 
-      <footer className="chatbot-footer">
-        <p>Powered by OpenWeatherMap API • Built with React & shadcn/ui</p>
+      {/* Footer */}
+      <footer className="simple-footer">
+        <p>Powered by Open-Meteo API • Built with React</p>
       </footer>
+
+      {/* Mobile Toggle */}
+      <MobileChatToggle isOpen={mobileChatOpen} onClose={() => setMobileChatOpen(false)} />
     </div>
   );
 }
