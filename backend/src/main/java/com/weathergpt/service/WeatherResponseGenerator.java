@@ -168,7 +168,29 @@ public class WeatherResponseGenerator {
                 .currentWeather(current)
                 .forecast(forecast)
                 .advisories(advisories)
+                .voiceAnswer(toVoiceFriendly(answer))
                 .build();
+    }
+
+    /**
+     * Produce a plain-text, TTS-friendly version of the conversational answer.
+     *
+     * Strips markdown bold markers, collapses repeated whitespace, and drops most
+     * emoji so speech engines can read the response cleanly. Numerals are kept as-is
+     * so the TTS engine's own number-to-speech handling applies.
+     */
+    private static String toVoiceFriendly(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        String cleaned = text
+                .replaceAll("\\*\\*", "")
+                .replaceAll("\\*(?=[^*])\\S(?:.*?\\S)?\\*", "$1")
+                .replaceAll("[\\s\\u200B]+", " ")
+                .replaceAll("\\s+([.,;:!?])", "$1")
+                .replaceAll("^\\s+|\\s+$", "")
+                .trim();
+        return cleaned.isBlank() ? null : cleaned;
     }
 
     private List<String> advisories(Double temperature, Integer precipitationProbability, Double windSpeed) {

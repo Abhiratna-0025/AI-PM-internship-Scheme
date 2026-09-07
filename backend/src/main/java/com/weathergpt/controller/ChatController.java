@@ -15,6 +15,10 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Natural-language weather query endpoint (public read access — weather data is
  * public information; authentication remains required for account features).
+ *
+ * <p>For voice-enabled queries, use {@link VoiceController} which accepts both
+ * JSON text and {@code multipart/form-data} audio uploads, and exposes a TTS
+ * endpoint at {@code /api/chat/speak}.
  */
 @RestController
 @RequestMapping("/api/chat")
@@ -23,9 +27,17 @@ public class ChatController {
 
     private final WeatherQueryService weatherQueryService;
 
+    /**
+     * Process a text-only weather query.
+     *
+     * @deprecated Prefer {@link VoiceController#queryVoice(String, org.springframework.web.multipart.MultipartFile, ChatQueryRequest)}
+     *             for the unified text-or-voice path. Kept for backward compatibility
+     *             with clients that send JSON only.
+     */
+    @Deprecated
     @PostMapping("/query")
     public ResponseEntity<ApiResponse<ChatResponse>> query(@Valid @RequestBody ChatQueryRequest request) {
-        ChatResponse response = weatherQueryService.processQuery(request.getMessage());
+        ChatResponse response = weatherQueryService.processQuery(request);
         return ResponseEntity.ok(ApiResponse.success("Query processed", response));
     }
 }

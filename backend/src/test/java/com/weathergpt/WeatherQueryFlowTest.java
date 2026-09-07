@@ -233,13 +233,15 @@ class WeatherQueryFlowTest {
     }
 
     @Test
-    @DisplayName("Blank message returns 400 validation error")
-    void blankMessageReturns400() throws Exception {
+    @DisplayName("Blank message with no audio returns clarification response")
+    void blankMessageReturnsClarification() throws Exception {
         mockMvc.perform(post("/api/chat/query")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.answer").exists())
+                .andExpect(jsonPath("$.data.intent").value("UNSUPPORTED"));
     }
 
     @Test

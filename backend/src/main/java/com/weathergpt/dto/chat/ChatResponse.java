@@ -43,4 +43,15 @@ public class ChatResponse {
 
     /** Simple data-driven weather advisories (not official warnings). */
     private List<String> advisories;
+
+    /**
+    * Optional voice-friendly plain-text rendering of the answer.
+    * When set, clients can pass this to a TTS engine (server-side or client-side)
+    * for spoken responses. This is especially useful for rural accessibility where
+    * users may prefer listening over reading.
+    *
+    * Derived from {@link #answer} but stripped of markdown formatting (bold markers,
+    * emoji, etc.) so TTS engines produce cleaner speech.
+    */
+    private String voiceAnswer;
 }

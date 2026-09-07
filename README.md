@@ -89,6 +89,33 @@ curl -X POST "http://localhost:8080/api/chat/query" \
   -d '{"message": "Will it rain tomorrow in Chennai?"}'
 ```
 
+### Voice interaction
+
+The chat endpoint also accepts voice queries. Clients can send an audio recording
+as multipart/form-data; the backend attempts server-side speech-to-text when text
+is blank and audio is present. Responses include a `voiceAnswer` field — a
+TTS-friendly plain-text version of the answer.
+
+```bash
+# Text query (unchanged)
+curl -X POST "http://localhost:8080/api/chat/query" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Will it rain tomorrow in Chennai?"}'
+
+# Voice query via audio upload (server-side STT must be wired for transcription)
+curl -X POST "http://localhost:8080/api/chat" \
+  -F "audio=@recording.wav" \
+  -F "message="
+
+# Synthesize spoken audio from text (server-side TTS must be wired)
+curl "http://localhost:8080/api/chat/speak?text=The%20weather%20in%20Delhi%20is%2032C&audioFormat=audio/wav" \
+  --output response.wav
+```
+
+For browser-based voice, the frontend uses the Web Speech API (SpeechRecognition
+for input, speechSynthesis for output) so rural users can speak and listen without
+relying on server-side speech services.
+
 ### Extreme-weather alerts
 
 ```bash
@@ -127,7 +154,7 @@ Password reset, email verification, and admin user-management endpoints also exi
 ## Architecture
 
 ```
-WeatherController      ChatController       AlertController
+WeatherController      ChatController/VoiceController       AlertController
      ↓                      ↓                     ↓
 WeatherService      WeatherQueryService      AlertService
      ↓                    ↓        ↓              ↓
@@ -136,6 +163,21 @@ GeocodingProvider   QueryInterpreter  ResponseGenerator   WeatherAlertProvider
 OpenMeteoGeocodingProvider  DeterministicInterpreter   NoOpAlertProvider (placeholder)
      ↓
 OpenMeteoWeatherProvider
+
+Voice layer (client-side):
+  frontend/src/hooks/useVoiceInput.ts   (SpeechRecognition -> text)
+  frontend/src/hooks/useVoiceOutput.ts  (speechSynthesis -> audio)
+
+Voice layer (server-side, pluggable, disabled by default):
+  voice/SpeechToTextService           (interface)
+  voice/TextToSpeechService           (interface)
+  voice/NoOpSpeechToTextService       (default no-op)
+  voice/NoOpTextToSpeechService       (default no-op)
+
+New DTOs:
+  dto/chat/ChatQueryRequest.audio[]            (optional audio payload)
+  dto/chat/ChatQueryRequest.audioContentType   (MIME type)
+  dto/chat/ChatResponse.voiceAnswer            (TTS-friendly text)
 ```
 
 A few hard rules shape the code:
@@ -237,7 +279,7 @@ The project currently has a substantial Spring Boot test suite covering weather 
 - Conversation persistence and context
 - Optional LLM-based query understanding alongside the deterministic interpreter
 - Multilingual support for Indian languages
-- Voice interaction
+- Voice interaction (client-side Web Speech API + pluggable server-side STT/TTS)
 - Historical weather and climate analytics
 - Weather risk assessment and sector-specific decision support
 - Real-time event ingestion via WebSocket / MQTT

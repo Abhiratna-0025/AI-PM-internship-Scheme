@@ -1,9 +1,11 @@
 package com.weathergpt.service;
 
+import com.weathergpt.dto.chat.ChatQueryRequest;
 import com.weathergpt.dto.chat.ChatResponse;
 import com.weathergpt.dto.weather.CurrentWeatherResponse;
 import com.weathergpt.dto.weather.ForecastDay;
 import com.weathergpt.dto.weather.ForecastResponse;
+import com.weathergpt.voice.SpeechToTextService;
 import com.weathergpt.weather.model.GeoLocation;
 import com.weathergpt.weather.query.ParsedWeatherQuery;
 import com.weathergpt.weather.query.TimeReference;
@@ -15,6 +17,7 @@ import org.springframework.stereotype.Service;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Orchestrates the natural-language weather flow:
@@ -24,6 +27,14 @@ import java.util.List;
  *
  * Weather facts always come from the providers via {@link WeatherService} —
  * never from the query understanding layer.
+ *
+ * Voice input path:
+ * <ul>
+ *   <li>If the client uploads audio, {@link SpeechToTextService} transcribes it
+ *       into text before interpretation.</li>
+ *   <li>If the client already transcribed locally (Web Speech API), the text is
+ *       sent as {@code message} and no server-side STT is used.</li>
+ * </ul>
  */
 @Service
 @RequiredArgsConstructor
@@ -36,8 +47,51 @@ public class WeatherQueryService {
     private final WeatherQueryInterpreter interpreter;
     private final WeatherService weatherService;
     private final WeatherResponseGenerator responseGenerator;
+    private final SpeechToTextService speechToTextService;
 
+    /**
+     * Process a text-based query (existing behavior).
+     *
+     * @deprecated Use {@link #processQuery(ChatQueryRequest)} for the unified text-or-voice path.
+     *             Kept for backward compatibility with callers that still pass raw text.
+     */
+    @Deprecated
     public ChatResponse processQuery(String message) {
+        ChatQueryRequest request = ChatQueryRequest.builder()
+                .message(message == null ? "" : message)
+                .build();
+        return processQuery(request);
+    }
+
+    /**
+     * Process a natural-language weather query that may come from text or from a
+     * voice recording.
+     *
+     * When {@code request.message} is blank but {@code request.audio} is present,
+     * the backend attempts server-side speech-to-text transcription first.
+     * If transcription is unavailable, the caller is expected to have transcribed
+     * locally and should send the result as {@code message} instead.
+     */
+    public ChatResponse processQuery(ChatQueryRequest request) {
+        String message = request.getMessage();
+
+        if (message == null || message.isBlank()) {
+            if (request.getAudio() != null && request.getAudio().length > 0) {
+                Optional<String> transcription = speechToTextService.transcribe(
+                        request.getAudio(), request.getAudioContentType());
+                if (transcription.isPresent() && !transcription.get().isBlank()) {
+                    message = transcription.get();
+                }
+            }
+            if (message == null || message.isBlank()) {
+                return ChatResponse.builder()
+                        .answer("I couldn't understand the audio. Please try saying your question again, "
+                                + "or type it out — for example: \"What's the weather in Delhi?\"")
+                        .intent(WeatherIntent.UNSUPPORTED)
+                        .build();
+            }
+        }
+
         ParsedWeatherQuery parsed = interpreter.interpret(message);
 
         if (parsed.getIntent() == WeatherIntent.UNSUPPORTED) {

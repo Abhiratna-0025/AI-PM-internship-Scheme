@@ -36,17 +36,23 @@ $ErrorActionPreference = "Stop"
 $ProjectDir  = $PSScriptRoot
 $BackendDir  = Join-Path $ProjectDir "backend"
 $FrontendDir = Join-Path $ProjectDir "frontend"
+$VoiceDir    = Join-Path $ProjectDir "voice_service"
 
 $BackendPort  = 8080
 $FrontendPort = 3000
+$VoicePort    = 8001
 $OllamaPort   = 11434
 
 # NOTE: change the default here (or set $env:OLLAMA_MODEL before running)
 # to match whichever model your WeatherGPT backend actually expects.
 $OllamaModel = if ($env:OLLAMA_MODEL) { $env:OLLAMA_MODEL } else { "llama3.2" }
 
+# Voice service configuration
+$VoiceEnabled = if ($env:VOICE_ENABLED) { $env:VOICE_ENABLED } else { "false" }
+
 $script:BackendProcess  = $null
 $script:FrontendProcess = $null
+$script:VoiceProcess    = $null
 $script:OllamaProcess   = $null
 
 # ------------------------------------------------------------
@@ -144,11 +150,71 @@ function Invoke-Cleanup {
         Stop-Process -Id $script:FrontendProcess.Id -Force -ErrorAction SilentlyContinue
     }
 
+    if ($script:VoiceProcess -and -not $script:VoiceProcess.HasExited) {
+        Stop-Process -Id $script:VoiceProcess.Id -Force -ErrorAction SilentlyContinue
+    }
+
     if ($script:OllamaProcess -and -not $script:OllamaProcess.HasExited) {
         Stop-Process -Id $script:OllamaProcess.Id -Force -ErrorAction SilentlyContinue
     }
 
     Write-Success "WeatherGPT stopped."
+}
+
+# ------------------------------------------------------------
+# Voice Service (Python)
+# ------------------------------------------------------------
+
+function Start-VoiceService {
+
+    if (-not (Test-Path $VoiceDir)) {
+        Write-Warn "Voice service directory not found: $VoiceDir"
+        Write-Warn "Skipping voice service startup."
+        return
+    }
+
+    if (-not (Test-Path (Join-Path $VoiceDir "main.py"))) {
+        Write-Warn "Voice service main.py not found in $VoiceDir"
+        Write-Warn "Skipping voice service startup."
+        return
+    }
+
+    if (Test-PortInUse $VoicePort) {
+        Write-Warn "Port $VoicePort is already in use."
+        Write-Warn "Voice service may already be running."
+        Write-Info "Voice Service: http://localhost:$VoicePort"
+        return
+    }
+
+    Write-Info "Starting WeatherGPT Voice Service (Python)..."
+
+    $script:VoiceProcess = Start-Process -FilePath "python3" -ArgumentList "main.py" `
+        -WorkingDirectory $VoiceDir -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput "$env:TEMP\weathergpt-voice.log" `
+        -RedirectStandardError "$env:TEMP\weathergpt-voice.err.log"
+
+    Write-Info "Waiting for voice service on port $VoicePort..."
+
+    $count = 0
+    while ($count -lt 30) {
+
+        if (Test-PortInUse $VoicePort) {
+            Write-Success "Voice Service started!"
+            Write-Success "Voice Service: http://localhost:$VoicePort"
+            return
+        }
+
+        if ($script:VoiceProcess.HasExited) {
+            Write-Warn "Voice service process stopped unexpectedly."
+            return
+        }
+
+        Start-Sleep -Seconds 1
+        $count++
+    }
+
+    Write-Warn "Voice service did not start within 30 seconds."
+    Write-Warn "Continuing without voice service - frontend will use browser Web Speech API."
 }
 
 # ------------------------------------------------------------
@@ -454,6 +520,7 @@ function Stop-Services {
 
     Stop-Port $BackendPort
     Stop-Port $FrontendPort
+    Stop-Port $VoicePort
 
     Write-Success "WeatherGPT services stopped."
 }
@@ -474,15 +541,25 @@ switch ($Command) {
         try {
             Invoke-OllamaPull
             Start-Backend
+            Start-VoiceService
             Start-Frontend
 
             Write-Host ""
             Write-Success "WeatherGPT is running!"
             Write-Host ""
 
-            Write-Host "Backend:"
+            Write-Host "Backend (Java/Spring Boot):"
             Write-Host "  http://localhost:$BackendPort"
             Write-Host ""
+
+            if (Test-PortInUse $VoicePort) {
+                Write-Host "Voice Service (Python/FastAPI):"
+                Write-Host "  http://localhost:$VoicePort"
+                Write-Host ""
+            } else {
+                Write-Host "Voice Service: Disabled (using browser Web Speech API)"
+                Write-Host ""
+            }
 
             Write-Host "Frontend (React + Vite):"
             Write-Host "  http://localhost:$FrontendPort"
@@ -502,6 +579,10 @@ switch ($Command) {
                 if ($script:FrontendProcess -and $script:FrontendProcess.HasExited) {
                     Write-ErrorMsg "Frontend process stopped."
                     break
+                }
+
+                if ($script:VoiceProcess -and $script:VoiceProcess.HasExited) {
+                    Write-Warn "Voice service process stopped."
                 }
             }
         } finally {
@@ -528,6 +609,15 @@ switch ($Command) {
         }
     }
 
+    "voice" {
+        try {
+            Start-VoiceService
+            if ($script:VoiceProcess) { Wait-Process -Id $script:VoiceProcess.Id }
+        } finally {
+            Invoke-Cleanup
+        }
+    }
+
     "setup" {
         Invoke-Setup
     }
@@ -543,20 +633,19 @@ switch ($Command) {
 
     "stop" {
         Stop-Services
-    }
-
-    default {
+    }default {
         Write-ErrorMsg "Unknown command: $Command"
 
         Write-Host ""
         Write-Host "Usage:"
-        Write-Host "  .\start.ps1"
-        Write-Host "  .\start.ps1 backend"
-        Write-Host "  .\start.ps1 frontend"
-        Write-Host "  .\start.ps1 setup"
-        Write-Host "  .\start.ps1 test"
-        Write-Host "  .\start.ps1 build"
-        Write-Host "  .\start.ps1 stop"
+        Write-Host ".\start.ps1"
+        Write-Host ".\start.ps1 backend"
+        Write-Host ".\start.ps1 frontend"
+        Write-Host ".\start.ps1 voice"
+        Write-Host ".\start.ps1 setup"
+        Write-Host ".\start.ps1 test"
+        Write-Host ".\start.ps1 build"
+        Write-Host ".\start.ps1 stop"
 
         exit 1
     }
