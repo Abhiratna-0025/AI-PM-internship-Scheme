@@ -1811,7 +1811,7 @@ html, body {
   z-index: 1;
   /* left: clear sidebar (36 + 75 + 16px gap = 127px)
      top: regular padding since sidebar is now centered */
-  padding: 20px 20px 160px 127px;
+  padding: 20px 20px 24px 127px;
 }
 
 /* Header */

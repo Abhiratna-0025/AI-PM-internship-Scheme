@@ -21,7 +21,6 @@ import './App.css';
 import ChatDrawer from './components/ChatDrawer';
 import MobileChatToggle from './components/MobileChatToggle';
 import MobileWeatherGPT from './components/MobileWeatherGPT';
-import WeeklyForecastFooter, { placeholderWeeklyDays, toWeeklyDays } from './components/WeeklyForecastFooter';
 import { ADVISORIES_ENDPOINT, ALERTS_ENDPOINT, CHAT_ENDPOINT, CLIMATE_ENDPOINT, WEATHER_ENDPOINTS } from './config/api';
 import { useVoiceInput } from './hooks/useVoiceInput';
 import { useVoiceOutput } from './hooks/useVoiceOutput';
@@ -218,10 +217,22 @@ export default function App() {
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const { latitude, longitude } = pos.coords;
+        const { latitude, longitude, accuracy } = pos.coords;
         setCurrentCity(`${latitude.toFixed(2)}, ${longitude.toFixed(2)}`);
+        console.info(`Location accuracy: ${Math.round(accuracy)}m`);
       },
-      (err) => alert("Location access error: " + err.message)
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          alert("Location access denied. Allow location for this site (and enable precise location in your browser settings), then try again.");
+        } else {
+          alert("Location access error: " + err.message);
+        }
+      },
+      {
+        enableHighAccuracy: true, // request GPS / precise fix
+        timeout: 10000,
+        maximumAge: 0, // force a fresh reading instead of a cached one
+      }
     );
   };
 
@@ -316,7 +327,7 @@ export default function App() {
   }
 
   // Desktop Interface
-  const weeklyDays = forecastList.length > 0 ? toWeeklyDays(forecastList) : placeholderWeeklyDays();  return (
+  return (
     <div className="simple-weathergpt">
       <div className="glass-orb glass-orb-1" aria-hidden="true" />
         <div className="glass-orb glass-orb-2" aria-hidden="true" />
@@ -747,8 +758,6 @@ export default function App() {
           <p>WeatherGPT Platform • Ministry of Earth Sciences (MoES) / IMD Mission • Open-Meteo & WIS 2.0 Telemetry</p>
         </footer>
       </main>
-
-      <WeeklyForecastFooter days={weeklyDays} cityName={currentCity} activeIndex={3} />
 
       <ChatDrawer
         isOpen={chatDrawerOpen}
