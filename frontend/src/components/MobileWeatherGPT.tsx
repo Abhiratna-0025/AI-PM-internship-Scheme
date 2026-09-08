@@ -31,7 +31,6 @@ const LANGUAGES = [
   { code: 'gu', label: 'ગુજરાતી (Gujarati)', speechLocale: 'gu-IN' },
 ];
 
-let renderCount = 0;
 export default function MobileWeatherGPT() {
   const [activeTab, setActiveTab] = useState<'chat' | 'nowcast' | 'nwp' | 'sectors' | 'alerts' | 'climate'>('chat');
   const [selectedLang, setSelectedLang] = useState('en');
@@ -40,7 +39,7 @@ export default function MobileWeatherGPT() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSpeakingId, setIsSpeakingId] = useState<string | null>(null);
 
-  renderCount++;
+
 
   // Live Data States
   const [nowcastData, setNowcastData] = useState<any>(null);

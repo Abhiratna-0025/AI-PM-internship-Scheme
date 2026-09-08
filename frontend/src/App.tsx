@@ -306,29 +306,16 @@ export default function App() {
 
   // Mobile viewport handler
   if (typeof window !== 'undefined' && window.innerWidth <= 768) {
-    console.log('[App] viewport check → MobileWeatherGPT, innerWidth:', window.innerWidth);
-    pushDebugLog('[App] viewport check', `MobileWeatherGPT branch · innerWidth: ${window.innerWidth}, innerHeight: ${window.innerHeight}`);
-    return (
-      <>
-        <DebugOverlay />
-        <MobileWeatherGPT />
-      </>
-    );
-  } else {
-    console.log('[App] viewport check → Desktop App, innerWidth:', window.innerWidth);
-    pushDebugLog('[App] viewport check', `Desktop App branch · innerWidth: ${window.innerWidth}, innerHeight: ${window.innerHeight}`);
+    return <MobileWeatherGPT />;
   }
 
   // Desktop Interface
-  const weeklyDays = forecastList.length > 0 ? toWeeklyDays(forecastList) : placeholderWeeklyDays();
-
-  return (
-    <>
-      <DebugOverlay />
-      <div className="simple-weathergpt">
-        <div className="glass-orb glass-orb-1" aria-hidden="true" />
-      <div className="glass-orb glass-orb-2" aria-hidden="true" />
-      <div className="glass-orb glass-orb-3" aria-hidden="true" />
+  const weeklyDays = forecastList.length > 0 ? toWeeklyDays(forecastList) : placeholderWeeklyDays();  return (
+    <div className="simple-weathergpt">
+      <div className="glass-orb glass-orb-1" aria-hidden="true" />
+        <div className="glass-orb glass-orb-2" aria-hidden="true" />
+        <div className="glass-orb glass-orb-3" aria-hidden="true" />
+      </aside>
       {/* Sidebar */}
       <aside className="sidebar">
         {/* Branding Logo — Breeze icon from Figma */}
@@ -345,7 +332,9 @@ export default function App() {
           </svg>
         </button>
 
-        <nav className="sidebar-nav">
+      </aside>
+
+      <nav className="sidebar-nav">
           <button
             className={`sidebar-item ${activeNav === 'weather' ? 'active' : ''}`}
             onClick={() => setActiveNav('weather')}
@@ -767,6 +756,5 @@ export default function App() {
 
       <MobileChatToggle isOpen={mobileChatOpen} onClose={() => setMobileChatOpen(false)} />
     </div>
-    </>
   );
 }
