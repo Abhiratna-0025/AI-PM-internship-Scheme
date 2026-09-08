@@ -47,8 +47,8 @@ const LANGUAGES = [
 export default function MobileWeatherGPT() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("chat");
 
-  // Language
-  const [selectedLang, setSelectedLang] = useState("en");
+  // Language is fixed to English because the language selector was removed.
+  const selectedLang = "en";
 
   // Location
   const [currentCity, setCurrentCity] = useState("Delhi");
@@ -761,69 +761,22 @@ export default function MobileWeatherGPT() {
         </div>
       </header>
 
-      {/* Language selector */}
-
-      <div className="language-selector">
-        {LANGUAGES.map((language) => (
-          <button
-            key={language.code}
-            type="button"
-            className={
-              selectedLang === language.code
-                ? "language-btn active"
-                : "language-btn"
-            }
-            onClick={() =>
-              setSelectedLang(language.code)
-            }
-          >
-            {language.label}
-          </button>
-        ))}
-      </div>
-
       {/* Navigation */}
 
-      <nav className="mobile-nav-tabs">
-        <button
-          type="button"
-          className={`nav-tab ${
-            activeTab === "chat" ? "active" : ""
-          }`}
-          onClick={() => setActiveTab("chat")}
-        >
-          💬 Chat
-        </button>
-
-        <button
-          type="button"
-          className={`nav-tab ${
-            activeTab === "nowcast" ? "active" : ""
-          }`}
-          onClick={() => setActiveTab("nowcast")}
-        >
-          🌤️ Nowcast
-        </button>
-
-        <button
-          type="button"
-          className={`nav-tab ${
-            activeTab === "nwp" ? "active" : ""
-          }`}
-          onClick={() => setActiveTab("nwp")}
-        >
-          🛰️ NWP Models
-        </button>
-
-        <button
-          type="button"
-          className={`nav-tab ${
-            activeTab === "sectors" ? "active" : ""
-          }`}
-          onClick={() => setActiveTab("sectors")}
-        >
-          🌾 Sectors
-        </button>
+      <nav
+        className="mobile-nav-tabs"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          gridTemplateRows: "repeat(2, auto)",
+          gap: "6px",
+          width: "100%",
+          padding: "6px 18px",
+          boxSizing: "border-box",
+          overflow: "hidden",
+        }}
+      >
+        {/* FIRST ROW: Alerts, Chat, Climate */}
 
         <button
           type="button"
@@ -831,6 +784,14 @@ export default function MobileWeatherGPT() {
             activeTab === "alerts" ? "active" : ""
           }`}
           onClick={() => setActiveTab("alerts")}
+          style={{
+            width: "100%",
+            minWidth: 0,
+            maxWidth: "none",
+            boxSizing: "border-box",
+            whiteSpace: "nowrap",
+            justifyContent: "center",
+          }}
         >
           🚨 Alerts{" "}
           {Number(alertsData?.totalAlerts ?? 0) > 0 && (
@@ -843,11 +804,93 @@ export default function MobileWeatherGPT() {
         <button
           type="button"
           className={`nav-tab ${
+            activeTab === "chat" ? "active" : ""
+          }`}
+          onClick={() => setActiveTab("chat")}
+          style={{
+            width: "100%",
+            minWidth: 0,
+            maxWidth: "none",
+            boxSizing: "border-box",
+            whiteSpace: "nowrap",
+            justifyContent: "center",
+          }}
+        >
+          💬 Chat
+        </button>
+
+        <button
+          type="button"
+          className={`nav-tab ${
             activeTab === "climate" ? "active" : ""
           }`}
           onClick={() => setActiveTab("climate")}
+          style={{
+            width: "100%",
+            minWidth: 0,
+            maxWidth: "none",
+            boxSizing: "border-box",
+            whiteSpace: "nowrap",
+            justifyContent: "center",
+          }}
         >
           📈 Climate
+        </button>
+
+        {/* SECOND ROW: Nowcast, NWP Models, Sectors */}
+
+        <button
+          type="button"
+          className={`nav-tab ${
+            activeTab === "nowcast" ? "active" : ""
+          }`}
+          onClick={() => setActiveTab("nowcast")}
+          style={{
+            width: "100%",
+            minWidth: 0,
+            maxWidth: "none",
+            boxSizing: "border-box",
+            whiteSpace: "nowrap",
+            justifyContent: "center",
+          }}
+        >
+          🌤️ Nowcast
+        </button>
+
+        <button
+          type="button"
+          className={`nav-tab ${
+            activeTab === "nwp" ? "active" : ""
+          }`}
+          onClick={() => setActiveTab("nwp")}
+          style={{
+            width: "100%",
+            minWidth: 0,
+            maxWidth: "none",
+            boxSizing: "border-box",
+            whiteSpace: "nowrap",
+            justifyContent: "center",
+          }}
+        >
+          🛰️ NWP Models
+        </button>
+
+        <button
+          type="button"
+          className={`nav-tab ${
+            activeTab === "sectors" ? "active" : ""
+          }`}
+          onClick={() => setActiveTab("sectors")}
+          style={{
+            width: "100%",
+            minWidth: 0,
+            maxWidth: "none",
+            boxSizing: "border-box",
+            whiteSpace: "nowrap",
+            justifyContent: "center",
+          }}
+        >
+          🌾 Sectors
         </button>
       </nav>
 

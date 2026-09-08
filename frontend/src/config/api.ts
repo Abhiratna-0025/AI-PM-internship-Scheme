@@ -19,7 +19,7 @@ const getApiBaseUrl = (): string => {
     return `http://${hostname}:${port}`;
   }
 
-  return 'http://localhost:8080';
+  return 'https://sih-weathergpt-production.up.railway.app';
 };
 
 export const API_BASE_URL = getApiBaseUrl();

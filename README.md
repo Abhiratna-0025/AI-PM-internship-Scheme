@@ -1,292 +1,1037 @@
-# WeatherGPT
+# 🌦️ WeatherGPT
 
-A conversational weather intelligence backend built with Java 17 and Spring Boot 3.2. WeatherGPT is aligned with the **Ministry of Earth Sciences (MoES) / India Meteorological Department (IMD)** mission and the **Disaster Management** theme.
+### AI-Powered Conversational Weather Intelligence Platform
 
-[![Build](https://img.shields.io/badge/build-Maven-informational?logo=apache-maven)](https://maven.apache.org/)
-[![Java](https://img.shields.io/badge/java-17-blue?logo=openjdk)](https://openjdk.org/)
-[![Spring Boot](https://img.shields.io/badge/spring%20boot-3.2-black?logo=spring-boot)](https://spring.io/projects/spring-boot)
-[![Tests](https://img.shields.io/badge/tests-JUnit-orange?logo=junit5)](https://junit.org/)
-[![License](https://img.shields.io/badge/license-internal-lightgrey)](https://choosealicense.com/)
+WeatherGPT is an AI-powered conversational weather platform designed to make **real-time meteorological information, forecasts, warnings, historical analysis, and weather-based decision support** easily accessible through natural language.
 
+Instead of requiring users to navigate multiple weather portals, bulletins, satellite products, and forecasting systems, WeatherGPT provides a unified conversational interface where users can simply ask questions such as:
 
-## Mission framing: MoES / IMD
+> "Will it rain in Delhi tomorrow?"
 
-WeatherGPT is built with the **Ministry of Earth Sciences (MoES)** and the **India Meteorological Department (IMD)** mission in view: make meteorological information more accessible, more understandable, and more actionable for the people and systems that need it.
+> "Is it safe to travel to Dehradun this weekend?"
 
-The project is also aligned with the **Disaster Management** theme. It is not an official warning authority, but it is designed to support early-awareness workflows by turning weather data into plain-language answers, location-based alerts, and clearly labelled advisories that can feed dashboards, monitoring tools, and decision-support processes.
+> "Give me a weather advisory for farmers in Punjab."
 
-Where official government warnings exist, the system should surface them through a verified source. Where they do not yet exist in the system, WeatherGPT should say so plainly rather than inventing a warning.
+> "What is the temperature trend in Mumbai over the last 10 years?"
 
-## Disaster-management use cases
+The system combines **weather APIs, meteorological datasets, forecasting models, GIS information, disaster warnings, and Large Language Models (LLMs)** to generate contextual and actionable weather intelligence.
 
-- **Early awareness, not final authority.** Residents, coordinators, and frontline teams can use the chat and alert endpoints to get a quick natural-language read on current conditions and likely weather changes for a place they care about.
-- **Situational awareness before and during an event.** Multi-day forecasts and current conditions support planning for rain, heat, wind, and other conditions that commonly matter in disaster-management workflows.
-- **Clear separation between official and automated information.** The `informationClass` field on alerts and advisories is meant to make it harder for automated content to be mistaken for a government warning.
-- **Graceful absence of official data.** When no official alert provider is configured, the alerts endpoint returns an empty list and tells consumers where to check instead. That is intentional: the system prefers a truthful empty response over a fabricated warning.
+---
 
-A short way to think about the product: WeatherGPT helps people ask weather questions in their own language and get grounded answers fast, while keeping official warnings and automated advisories visually and semantically distinct.
+## 🚨 Problem Statement
 
-<!-- Quick-start -->
+Weather information is often distributed across multiple platforms, including:
 
-```bash
-# 1. Start the backend
-cd backend
-export JWT_SECRET=<base64-secret-at-least-256-bits>
-mvn spring-boot:run
+* Weather portals
+* Government bulletins
+* Satellite data
+* Numerical Weather Prediction (NWP) models
+* Disaster warning systems
+* Historical climate databases
+* Forecasting APIs
 
-# 2. Try it from another terminal
-curl -s "http://localhost:8080/api/weather/current?location=Delhi" | jq .
-curl -s "http://localhost:8080/api/weather/forecast?location=Mumbai&days=7" | jq .
-curl -s -X POST "http://localhost:8080/api/chat/query" -H "Content-Type: application/json" -d '{"message":"Will it rain tomorrow in Chennai?"}' | jq .
-curl -s "http://localhost:8080/api/alerts?location=Delhi" | jq .
+This makes it difficult for common users, researchers, farmers, disaster managers, and government agencies to quickly obtain the information they actually need.
+
+WeatherGPT addresses this problem by providing a **single intelligent conversational interface** for accessing and understanding meteorological information.
+
+---
+
+# 🎯 Objectives
+
+The primary objectives of WeatherGPT are:
+
+* Provide real-time weather information.
+* Enable natural-language weather queries.
+* Integrate meteorological datasets and forecasting systems.
+* Provide extreme-weather alerts and warnings.
+* Generate location-specific weather advisories.
+* Support multiple Indian languages.
+* Provide historical weather and climate analysis.
+* Enable voice-based interaction.
+* Provide domain-specific decision support for agriculture, aviation, marine operations, and urban planning.
+
+---
+
+# ✨ Key Features
+
+## 🌡️ 1. Real-Time Weather
+
+Users can obtain current weather conditions for any supported location.
+
+Example:
+
+```text
+User:
+What's the weather in Greater Noida right now?
+
+WeatherGPT:
+Temperature: 31°C
+Humidity: 68%
+Wind: 14 km/h
+Condition: Partly Cloudy
 ```
 
-_Tip: if you want to reuse one city, replace `Delhi` / `Mumbai` / `Chennai` in all four commands._
+---
 
-It turns natural-language weather questions, real-time conditions, multi-day forecasts, and extreme-weather alerts into structured, reproducible API responses — without fabricating official government warnings.
+## 🔮 2. Natural Language Forecasting
+
+Users don't need to understand weather APIs or technical terminology.
+
+They can simply ask:
+
+```text
+Will it rain tomorrow?
+```
+
+or:
+
+```text
+Should I carry an umbrella to work tomorrow?
+```
+
+The AI converts the natural-language request into structured weather queries and generates an understandable response.
 
 ---
 
-## What it does
+## 🛰️ 3. NWP Model Integration
 
-- **Real-time weather** for a human-readable location name
-- **Multi-day forecasts** (up to 16 days)
-- **Natural-language weather queries** with a deterministic interpreter
-- **Extreme-weather alert foundation** with mandatory information classification (`OFFICIAL_WARNING` / `AUTOMATED_ADVISORY` / `OBSERVATION`)
-- **Authentication, authorization, and account lifecycle** — registration, login, JWT refresh, password reset, email verification, lockout, and RBAC
+WeatherGPT can integrate numerical weather prediction systems such as:
+
+* GFS
+* WRF
+* Other regional forecasting models
+
+These models can provide additional information for advanced forecasting and research use cases.
 
 ---
 
-## API at a glance
+## ⚠️ 4. Extreme Weather Alerts
 
-Base URL: `http://localhost:8080`
+The system can consume warning information from meteorological and disaster-management systems.
 
-All responses use the same envelope:
+Possible alerts include:
+
+* 🌪️ Cyclones
+* 🌧️ Heavy rainfall
+* 🌊 Floods
+* 🌡️ Heatwaves
+* ❄️ Cold waves
+* ⛈️ Thunderstorms
+* 🌬️ Strong winds
+* 🌊 Storm surges
+
+The system can convert technical warnings into easy-to-understand instructions.
+
+Example:
+
+```text
+⚠️ Heavy Rainfall Warning
+
+Heavy rainfall is expected in your region over the next
+24 hours.
+
+Recommendation:
+Avoid unnecessary travel and stay away from
+low-lying and waterlogged areas.
+```
+
+---
+
+## 📍 5. Location-Based Advisory
+
+WeatherGPT can use a user's selected location to provide contextual recommendations.
+
+Examples:
+
+### Agriculture
+
+```text
+Rain is expected tomorrow evening.
+Consider postponing irrigation and avoid spraying
+pesticides before rainfall.
+```
+
+### Travel
+
+```text
+Thunderstorms are expected along your route.
+Consider travelling after 7 PM.
+```
+
+### Urban Planning
+
+```text
+Heavy rainfall is expected over the next 6 hours.
+Low-lying areas may experience waterlogging.
+```
+
+---
+
+## 🌐 6. Multilingual Support
+
+WeatherGPT is designed to support Indian languages.
+
+Potential supported languages include:
+
+* English
+* Hindi
+* Bengali
+* Marathi
+* Telugu
+* Tamil
+* Gujarati
+* Kannada
+* Malayalam
+* Punjabi
+* Odia
+
+Example:
+
+```text
+User:
+कल दिल्ली में बारिश होगी क्या?
+
+WeatherGPT:
+हाँ, कल दोपहर के समय हल्की बारिश होने की संभावना है।
+```
+
+---
+
+## 📊 7. Historical Weather & Climate Analysis
+
+Users can ask questions about historical weather trends.
+
+Examples:
+
+```text
+What was the average temperature in Delhi during June
+over the last 10 years?
+```
+
+```text
+How has rainfall changed in Rajasthan over the last
+20 years?
+```
+
+The system can provide:
+
+* Temperature trends
+* Rainfall trends
+* Humidity trends
+* Extreme weather frequency
+* Historical comparisons
+* Climate patterns
+
+---
+
+## 🎙️ 8. Voice Interaction
+
+WeatherGPT can support voice-based interaction to improve accessibility, especially for users who may have difficulty typing.
+
+Example workflow:
+
+```text
+🎙️ User speaks
+       ↓
+Speech-to-Text
+       ↓
+LLM Query Understanding
+       ↓
+Weather Data Retrieval
+       ↓
+AI Response Generation
+       ↓
+Text-to-Speech
+       ↓
+🔊 Voice Response
+```
+
+---
+
+# 🧠 System Architecture
+
+```text
+                    ┌─────────────────────┐
+                    │       User          │
+                    │ Mobile / Web / Voice│
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │   API Gateway       │
+                    │  FastAPI / Node.js  │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │ Query Understanding │
+                    │       LLM           │
+                    └──────────┬──────────┘
+                               │
+                 ┌─────────────┼─────────────┐
+                 ▼             ▼             ▼
+          ┌───────────┐ ┌────────────┐ ┌────────────┐
+          │ Weather   │ │ Forecast   │ │  Warning   │
+          │   APIs    │ │   Models   │ │  Systems   │
+          └─────┬─────┘ └──────┬─────┘ └──────┬─────┘
+                │              │              │
+                └──────────────┼──────────────┘
+                               ▼
+                    ┌─────────────────────┐
+                    │ Weather Data Layer  │
+                    │ PostgreSQL/MongoDB  │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │ AI Response Engine  │
+                    │ Context + Reasoning │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │ User-Friendly       │
+                    │ Weather Advisory    │
+                    └─────────────────────┘
+```
+
+---
+
+# 🏗️ Core Components
+
+## 1. Frontend
+
+The frontend provides the conversational interface.
+
+Possible technologies:
+
+* React Native
+* Flutter
+* React.js
+* HTML/CSS/JavaScript
+
+Main screens:
+
+```text
+Home
+ ├── Chat
+ ├── Current Weather
+ ├── Forecast
+ ├── Alerts
+ ├── Weather Map
+ ├── Climate Analysis
+ └── Settings
+```
+
+---
+
+## 2. Backend
+
+The backend manages:
+
+* User requests
+* Authentication
+* Weather API communication
+* Database operations
+* Forecast retrieval
+* Alert processing
+* LLM communication
+* Location processing
+* Real-time updates
+
+Possible technologies:
+
+```text
+Python
+FastAPI
+Node.js
+WebSocket
+MQTT
+```
+
+---
+
+## 3. AI Query Understanding Engine
+
+The LLM acts as the natural-language understanding layer.
+
+For example:
+
+```text
+"What will the weather be like in Agra tomorrow evening?"
+```
+
+can be converted into:
 
 ```json
 {
-  "success": true,
-  "message": "...",
-  "data": {}
+  "location": "Agra",
+  "date": "tomorrow",
+  "time_range": "evening",
+  "information_required": [
+    "temperature",
+    "rainfall",
+    "wind",
+    "weather_condition"
+  ]
 }
 ```
 
-### Weather
-
-```bash
-# Current conditions
-curl "http://localhost:8080/api/weather/current?location=Delhi"
-
-# Multi-day forecast
-curl "http://localhost:8080/api/weather/forecast?location=Mumbai&days=7"
-```
-
-### Natural-language chat
-
-```bash
-curl -X POST "http://localhost:8080/api/chat/query" \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Will it rain tomorrow in Chennai?"}'
-```
-
-### Voice interaction
-
-The chat endpoint also accepts voice queries. Clients can send an audio recording
-as multipart/form-data; the backend attempts server-side speech-to-text when text
-is blank and audio is present. Responses include a `voiceAnswer` field — a
-TTS-friendly plain-text version of the answer.
-
-```bash
-# Text query (unchanged)
-curl -X POST "http://localhost:8080/api/chat/query" \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Will it rain tomorrow in Chennai?"}'
-
-# Voice query via audio upload (server-side STT must be wired for transcription)
-curl -X POST "http://localhost:8080/api/chat" \
-  -F "audio=@recording.wav" \
-  -F "message="
-
-# Synthesize spoken audio from text (server-side TTS must be wired)
-curl "http://localhost:8080/api/chat/speak?text=The%20weather%20in%20Delhi%20is%2032C&audioFormat=audio/wav" \
-  --output response.wav
-```
-
-For browser-based voice, the frontend uses the Web Speech API (SpeechRecognition
-for input, speechSynthesis for output) so rural users can speak and listen without
-relying on server-side speech services.
-
-### Extreme-weather alerts
-
-```bash
-curl "http://localhost:8080/api/alerts?location=Delhi"
-```
-
-Until an official alert provider is wired in, `/api/alerts` returns an empty alert list with a truthful `providerStatus` and `officialProviderActive: false`. It does not invent warnings.
-
-### Authentication
-
-```bash
-# Register
-curl -X POST "http://localhost:8080/api/auth/register" \
-  -H "Content-Type: application/json" \
-  -d '{ "fullName": "Jane Doe", "email": "jane@example.com", "phoneNumber": "9876543210", "password": "Secure@1234", "confirmPassword": "Secure@1234" }'
-
-# Login
-curl -X POST "http://localhost:8080/api/auth/login" \
-  -H "Content-Type: application/json" \
-  -d '{ "email": "jane@example.com", "password": "Secure@1234" }'
-
-# Refresh token
-curl -X POST "http://localhost:8080/api/auth/refresh" \
-  -H "Content-Type: application/json" \
-  -d '{ "refreshToken": "<token>" }'
-
-# Current user
-curl "http://localhost:8080/api/auth/me" \
-  -H "Authorization: Bearer <token>"
-```
-
-Password reset, email verification, and admin user-management endpoints also exist. See the project’s endpoint reference for the full list.
+The backend then retrieves the required data.
 
 ---
 
-## Architecture
+# 🤖 AI Architecture
 
-```
-WeatherController      ChatController/VoiceController       AlertController
-     ↓                      ↓                     ↓
-WeatherService      WeatherQueryService      AlertService
-     ↓                    ↓        ↓              ↓
-GeocodingProvider   QueryInterpreter  ResponseGenerator   WeatherAlertProvider
-     ↓                   ↓                          ↓
-OpenMeteoGeocodingProvider  DeterministicInterpreter   NoOpAlertProvider (placeholder)
-     ↓
-OpenMeteoWeatherProvider
+WeatherGPT should **not allow the LLM to invent weather information**.
 
-Voice layer (client-side):
-  frontend/src/hooks/useVoiceInput.ts   (SpeechRecognition -> text)
-  frontend/src/hooks/useVoiceOutput.ts  (speechSynthesis -> audio)
+Instead, the system follows a data-grounded architecture:
 
-Voice layer (server-side, pluggable, disabled by default):
-  voice/SpeechToTextService           (interface)
-  voice/TextToSpeechService           (interface)
-  voice/NoOpSpeechToTextService       (default no-op)
-  voice/NoOpTextToSpeechService       (default no-op)
-
-New DTOs:
-  dto/chat/ChatQueryRequest.audio[]            (optional audio payload)
-  dto/chat/ChatQueryRequest.audioContentType   (MIME type)
-  dto/chat/ChatResponse.voiceAnswer            (TTS-friendly text)
+```text
+User Question
+      ↓
+LLM
+      ↓
+Intent + Location + Time Extraction
+      ↓
+Weather API / Database / NWP Model
+      ↓
+Verified Weather Data
+      ↓
+LLM
+      ↓
+Contextual Response
 ```
 
-A few hard rules shape the code:
-
-- Controllers are thin. No business logic, no provider-specific parsing in request handlers.
-- External APIs are isolated behind provider interfaces.
-- Raw provider payloads are never exposed to API clients.
-- Query interpretation is separated from weather data retrieval.
-- Responses are grounded in real provider data.
-- Automated advisories are never presented as official government warnings.
-- If no official provider is configured, the alerts endpoint returns an empty list and tells the consumer where to look instead.
+This approach reduces hallucination and improves reliability.
 
 ---
 
-## Data sources
+# 🗄️ Data Sources
 
-| Concern | Source |
-| --- | --- |
-| Current weather + forecast | Open-Meteo |
-| Geocoding | Open-Meteo Geocoding |
-| Alerts (today) | Placeholder `NoOpAlertProvider` |
+The platform can integrate multiple meteorological sources.
 
-Open-Meteo is free and does not require an API key, which keeps local development simple. The provider layer is pluggable, so other sources can be added later without changing controllers or business logic.
+Potential data sources include:
 
----
+* Weather APIs
+* Government meteorological datasets
+* Satellite products
+* GFS
+* WRF
+* Historical climate datasets
+* Disaster warning feeds
+* GIS datasets
 
-## Alert classification
-
-Every alert or advisory includes an `informationClass` field. Consumers should present this to end users.
-
-| Class | Meaning |
-| --- | --- |
-| `OFFICIAL_WARNING` | Originates from a verified government source such as IMD or NDMA |
-| `AUTOMATED_ADVISORY` | System-generated from weather thresholds. Not a government warning |
-| `OBSERVATION` | Factual statement from observed conditions. Not a warning |
-
-WeatherGPT does not fabricate official warnings. With only the placeholder provider active, alert responses are intentionally empty and transparent about that fact.
+The architecture is designed so that additional data providers can be added without changing the entire application.
 
 ---
 
-## Tech stack
+# 🛠️ Technology Stack
 
-| Layer | Choice |
-| --- | --- |
-| Language / framework | Java 17, Spring Boot 3.2 |
-| Build | Maven |
-| Database (dev) | H2 in-memory |
-| Database (production) | Swap to PostgreSQL |
-| Authentication | JWT (JJWT 0.12) |
-| Weather API | Open-Meteo |
-| Geocoding API | Open-Meteo Geocoding |
+| Layer               | Technology                      |
+| ------------------- | ------------------------------- |
+| Frontend            | React Native / Flutter          |
+| Backend             | Python / FastAPI                |
+| Alternative Backend | Node.js                         |
+| AI                  | OpenAI / Llama / Gemini         |
+| Database            | PostgreSQL / MongoDB            |
+| Real-Time           | WebSocket / MQTT                |
+| Weather Models      | GFS / WRF                       |
+| GIS                 | GeoPandas / PostGIS             |
+| Containerization    | Docker                          |
+| Orchestration       | Kubernetes                      |
+| Voice               | Speech-to-Text + Text-to-Speech |
+| API Communication   | REST / WebSocket                |
 
 ---
 
-## Running locally
+# 📁 Project Structure
 
-```bash
-cd backend
-export JWT_SECRET=<base64-encoded-secret, at least 256 bits>
-mvn spring-boot:run
-```
-
-Default local settings come from `backend/src/main/resources/application.properties`. The app runs on port `8080`. Out of the box, authentication, email, and SMTP are configured to work in a development posture, so the backend can start without external mail infrastructure.
-
-If you want, you can override the weather and geocoding base URLs through environment variables:
-
-```bash
-export WEATHER_API_BASE_URL=https://api.open-meteo.com/v1
-export GEOCODING_API_BASE_URL=https://geocoding-api.open-meteo.com/v1
+```text
+WeatherGPT/
+│
+├── frontend/
+│   ├── components/
+│   ├── screens/
+│   ├── services/
+│   └── utils/
+│
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   ├── controllers/
+│   │   ├── models/
+│   │   ├── services/
+│   │   ├── middleware/
+│   │   └── utils/
+│   │
+│   ├── main.py
+│   └── requirements.txt
+│
+├── ai/
+│   ├── prompts/
+│   ├── agents/
+│   ├── tools/
+│   └── query_engine/
+│
+├── data/
+│   ├── weather/
+│   ├── historical/
+│   └── climate/
+│
+├── models/
+│   └── nwp/
+│
+├── infrastructure/
+│   ├── docker/
+│   └── kubernetes/
+│
+├── .env.example
+├── docker-compose.yml
+└── README.md
 ```
 
 ---
 
-## Testing
+# 🔄 Example Query Flow
 
-```bash
-cd backend
-mvn clean test
+Consider the query:
+
+```text
+"Will there be heavy rain in Mumbai tomorrow?"
 ```
 
-The project currently has a substantial Spring Boot test suite covering weather flow, chat query interpretation, alerts, controllers, token handling, and provider behavior.
+### Step 1 — Query Understanding
+
+The AI identifies:
+
+```json
+{
+  "location": "Mumbai",
+  "date": "tomorrow",
+  "query_type": "rainfall",
+  "severity": "heavy"
+}
+```
+
+### Step 2 — Data Retrieval
+
+Backend requests forecast data for Mumbai.
+
+### Step 3 — Weather Analysis
+
+The system evaluates:
+
+* Rain probability
+* Expected rainfall
+* Wind speed
+* Weather warnings
+* Existing alerts
+
+### Step 4 — AI Response
+
+The LLM converts the structured information into a natural-language answer.
+
+### Step 5 — Advisory
+
+If necessary, the system provides an actionable recommendation.
 
 ---
 
-## Roadmap
+# 🌾 Use Cases
 
-**Implemented**
+## Agriculture
 
-- Real-time weather and multi-day forecasts
-- Deterministic natural-language weather query interpretation
-- Conversational weather responses grounded in live provider data
-- Alert classification framework and placeholder provider with safety guards
-- JWT-based authentication with refresh tokens, password reset, email verification, account lockout, and RBAC
-- Admin user and role management
+Farmers can ask:
 
-**Planned**
+```text
+Will it rain tomorrow?
+```
 
-- Official IMD / NDMA alert provider integration
-- Conversation persistence and context
-- Optional LLM-based query understanding alongside the deterministic interpreter
-- Multilingual support for Indian languages
-- Voice interaction (client-side Web Speech API + pluggable server-side STT/TTS)
-- Historical weather and climate analytics
-- Weather risk assessment and sector-specific decision support
-- Real-time event ingestion via WebSocket / MQTT
-- NWP / GFS / WRF model integration
+```text
+Is it a good time to spray pesticides?
+```
+
+```text
+What is the rainfall forecast for the next 7 days?
+```
+
+WeatherGPT can provide weather-based agricultural recommendations.
 
 ---
 
-## Important caveat
+## ✈️ Aviation
 
-WeatherGPT is a decision-support tool, not an official warning authority. Until a verified government alert source is integrated, treat automated advisories as informational and route official warnings through the appropriate government channels.
+Possible features:
+
+* Weather briefing
+* Wind conditions
+* Visibility
+* Thunderstorm information
+* Rainfall
+* Forecast summaries
+
+---
+
+## 🌊 Disaster Management
+
+WeatherGPT can help communicate:
+
+* Cyclone warnings
+* Flood warnings
+* Heavy rainfall alerts
+* Heatwave warnings
+* Severe thunderstorms
+
+in simple, understandable language.
+
+---
+
+## 🏙️ Smart Cities
+
+Cities can use WeatherGPT for:
+
+* Rainfall monitoring
+* Flood risk awareness
+* Heatwave monitoring
+* Air/weather condition monitoring
+* Weather-based infrastructure planning
+
+---
+
+## 🔬 Climate Research
+
+Researchers can query:
+
+```text
+Compare average rainfall between 2000 and 2025.
+```
+
+or:
+
+```text
+Show the temperature trend for Delhi over the last 20 years.
+```
+
+---
+
+# ⚡ Real-Time Data Pipeline
+
+WeatherGPT can use an event-driven architecture for real-time information.
+
+```text
+Meteorological Data
+        ↓
+Data Ingestion Service
+        ↓
+MQTT / WIS2.0 / WebSocket
+        ↓
+Data Processing
+        ↓
+Database / Cache
+        ↓
+Alert Detection
+        ↓
+Notification Service
+        ↓
+Users
+```
+
+This allows the platform to react quickly to newly available weather information.
+
+---
+
+# 🔔 Alert System
+
+The alert engine can continuously evaluate incoming weather data.
+
+Example:
+
+```text
+IF rainfall > threshold
+        ↓
+Check affected region
+        ↓
+Check warning level
+        ↓
+Generate alert
+        ↓
+Translate alert
+        ↓
+Send notification
+```
+
+Possible notification channels:
+
+* Mobile push notifications
+* SMS
+* In-app alerts
+* Voice notifications
+* Web notifications
+
+---
+
+# 🌍 GIS & Location Intelligence
+
+GIS functionality can be used to visualize weather conditions geographically.
+
+Potential features:
+
+* Interactive weather map
+* Rainfall map
+* Temperature map
+* Wind map
+* Cyclone tracking
+* Flood-risk regions
+* Alert zones
+
+Location information can be represented using latitude/longitude and spatial databases such as PostGIS.
+
+---
+
+# 🔐 Security & Reliability
+
+Weather information can influence important decisions, so the platform should prioritize reliability.
+
+Recommended practices:
+
+* API authentication
+* Rate limiting
+* Input validation
+* Secure environment variables
+* Database access control
+* API timeout handling
+* Weather-source verification
+* Logging and monitoring
+* Graceful failure when external APIs are unavailable
+
+The AI should clearly distinguish between:
+
+```text
+Observed data
+Forecast data
+Historical data
+AI-generated advisory
+```
+
+---
+
+# 🚀 Installation
+
+## 1. Clone Repository
+
+```bash
+git clone https://github.com/your-username/WeatherGPT.git
+
+cd WeatherGPT
+```
+
+## 2. Create Virtual Environment
+
+```bash
+python -m venv venv
+```
+
+### Windows
+
+```bash
+venv\Scripts\activate
+```
+
+### Linux/macOS
+
+```bash
+source venv/bin/activate
+```
+
+## 3. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+## 4. Configure Environment Variables
+
+Create a `.env` file:
+
+```env
+OPENAI_API_KEY=your_api_key
+
+WEATHER_API_KEY=your_weather_api_key
+
+DATABASE_URL=your_database_url
+
+MQTT_BROKER_URL=your_mqtt_broker
+```
+
+## 5. Start Backend
+
+```bash
+uvicorn app.main:app --reload
+```
+
+Backend will be available at:
+
+```text
+http://localhost:8000
+```
+
+---
+
+# 📡 Example API
+
+### Current Weather
+
+```http
+GET /api/weather/current?lat=28.61&lon=77.23
+```
+
+### Forecast
+
+```http
+GET /api/weather/forecast?lat=28.61&lon=77.23&days=7
+```
+
+### Chat
+
+```http
+POST /api/chat
+```
+
+Request:
+
+```json
+{
+  "message": "Will it rain tomorrow in Delhi?",
+  "latitude": 28.61,
+  "longitude": 77.23,
+  "language": "en"
+}
+```
+
+Response:
+
+```json
+{
+  "answer": "There is a moderate chance of rainfall tomorrow...",
+  "location": "Delhi",
+  "language": "en",
+  "sources": [
+    "weather_forecast"
+  ]
+}
+```
+
+---
+
+# 🐳 Docker
+
+Build the application:
+
+```bash
+docker compose build
+```
+
+Run:
+
+```bash
+docker compose up
+```
+
+Stop:
+
+```bash
+docker compose down
+```
+
+---
+
+# 📈 Scalability
+
+WeatherGPT is designed to support large numbers of users.
+
+A scalable deployment can use:
+
+```text
+                    Load Balancer
+                         │
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+      Backend 1      Backend 2      Backend 3
+          │              │              │
+          └──────────────┼──────────────┘
+                         ▼
+                    Redis Cache
+                         │
+                         ▼
+                    PostgreSQL
+```
+
+Containerization with Docker and orchestration using Kubernetes can enable horizontal scaling.
+
+Caching can also reduce repeated requests to external weather APIs.
+
+---
+
+# 🎯 Expected Outcomes
+
+WeatherGPT aims to provide:
+
+* Faster access to weather information.
+* Better public understanding of forecasts.
+* Improved disaster preparedness.
+* Easier access to meteorological information.
+* Location-specific weather advisories.
+* Multilingual weather intelligence.
+* Voice accessibility for rural users.
+* Decision support for agriculture, aviation, marine operations, and smart cities.
+
+---
+
+# 📊 Evaluation Parameters
+
+The platform can be evaluated using the following parameters:
+
+### 1. Accuracy
+
+How accurately does the system represent the underlying meteorological data?
+
+### 2. Relevance
+
+Does the response correctly answer the user's question?
+
+### 3. Response Latency
+
+How quickly can WeatherGPT retrieve and process information?
+
+### 4. Multilingual Performance
+
+How accurately can the platform understand and respond in Indian languages?
+
+### 5. Accessibility
+
+Can users easily interact with the system using text and voice?
+
+### 6. Scalability
+
+Can the platform handle a large number of concurrent users?
+
+### 7. Real-Time Integration
+
+How quickly can new weather observations and warnings reach users?
+
+---
+
+# 🔮 Future Enhancements
+
+Possible future improvements include:
+
+* AI-based personalized weather alerts.
+* Satellite image analysis using computer vision.
+* More advanced WRF/NWP integration.
+* Agricultural crop-specific recommendations.
+* Flood prediction models.
+* Hyperlocal weather forecasting.
+* Automatic disaster-response recommendations.
+* Offline/low-connectivity mode.
+* WhatsApp/SMS-based weather assistant.
+* Personalized weather dashboards.
+* Weather-aware route planning.
+* Advanced climate-risk analysis.
+
+---
+
+# 💡 Why WeatherGPT?
+
+Traditional weather applications mainly display weather information.
+
+WeatherGPT focuses on **understanding the user's question and turning meteorological data into actionable intelligence.**
+
+Instead of:
+
+```text
+Temperature: 34°C
+Humidity: 72%
+Rain Probability: 80%
+Wind: 18 km/h
+```
+
+WeatherGPT can provide:
+
+```text
+🌧️ Rain is highly likely this evening.
+
+If you're planning to travel, consider leaving earlier
+because heavy rainfall may reduce visibility and cause
+waterlogging in low-lying areas.
+```
+
+The goal is to move from **"weather data" → "weather intelligence."**
+
+---
+
+# 👥 Target Users
+
+WeatherGPT can serve:
+
+* 👨‍🌾 Farmers
+* 🧑‍🔬 Researchers
+* 🚨 Disaster-management teams
+* 🏛️ Government agencies
+* ✈️ Aviation professionals
+* ⚓ Marine operators
+* 🏙️ Smart-city authorities
+* 🚗 Travelers
+* 👨‍👩‍👧 General public
+* 🌾 Rural communities
+
+---
+
+# 🏆 Project Vision
+
+> **"Making weather intelligence accessible to everyone through natural language."**
+
+WeatherGPT aims to bridge the gap between complex meteorological systems and everyday users by combining **AI, real-time weather data, forecasting models, GIS, multilingual NLP, and voice technology** into a single conversational platform.
+
+---
+
+# 📄 License
+
+This project is developed for educational, research, and demonstration purposes.
+
+Add an appropriate open-source license before public deployment.
+
+---
+
+# 🤝 Contributing
+
+Contributions are welcome.
+
+1. Fork the repository.
+2. Create a feature branch.
+
+```bash
+git checkout -b feature/new-feature
+```
+
+3. Commit your changes.
+
+```bash
+git commit -m "Add new weather feature"
+```
+
+4. Push the branch.
+
+```bash
+git push origin feature/new-feature
+```
+
+5. Open a Pull Request.
+
+---
+
+# ⭐ Support
+
+If you find WeatherGPT useful, consider giving the repository a ⭐ and contributing to its development.
+
+**WeatherGPT — From weather data to intelligent decisions. 🌦️🤖**
