@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronLeft, Send, Mic, VolumeX, MoreVertical } from 'lucide-react';
+import { ChevronLeft, Mic, MoreVertical, Send, VolumeX } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { useVoiceOutput } from '../hooks/useVoiceOutput';
 import './ChatDrawer.css';
@@ -24,7 +24,7 @@ export default function ChatDrawer({
   isOpen,
   onClose,
   selectedLang = 'en',
-  onLanguageChange,
+
 }: ChatDrawerProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -44,7 +44,7 @@ export default function ChatDrawer({
   const streamRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { speak, stop: stopSpeech, isSpeaking } = useVoiceOutput();
+  const { speak, stop: stopSpeech } = useVoiceOutput();
 
   const LANGUAGE_LOCALES: Record<string, string> = {
     en: 'en-IN',
@@ -135,10 +135,7 @@ export default function ChatDrawer({
         setIsSpeakingId(null);
       } else {
         setIsSpeakingId(messageId);
-        speak(text, {
-          lang: LANGUAGE_LOCALES[selectedLang] || 'en-IN',
-          onEnd: () => setIsSpeakingId(null),
-        });
+        speak(text);
       }
     },
     [isSpeakingId, speak, stopSpeech, selectedLang]

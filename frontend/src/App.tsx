@@ -1,31 +1,30 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { useVoiceInput } from './hooks/useVoiceInput';
-import { useVoiceOutput } from './hooks/useVoiceOutput';
-import { 
-  Sparkles,
-  Mic,
-  Send,
-  MapPin,
-  Wind,
-  Droplets,
-  Thermometer,
-  Cloud,
-  Radar,
+import {
   BarChart3,
   Bell,
-  TrendingUp,
+  CheckCircle,
+  Cloud,
   Cpu,
+  Droplets,
   Layers,
+  MapPin,
+  Mic,
+  Radar,
+  Send,
+  Thermometer,
+  TrendingUp,
   Volume2,
   VolumeX,
-  CheckCircle
+  Wind
 } from 'lucide-react';
-import { WEATHER_ENDPOINTS, ADVISORIES_ENDPOINT, ALERTS_ENDPOINT, CLIMATE_ENDPOINT, CHAT_ENDPOINT } from './config/api';
-import MobileWeatherGPT from './components/MobileWeatherGPT';
-import MobileChatToggle from './components/MobileChatToggle';
-import ChatDrawer from './components/ChatDrawer';
-import WeeklyForecastFooter, { placeholderWeeklyDays, toWeeklyDays } from './components/WeeklyForecastFooter';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import './App.css';
+import ChatDrawer from './components/ChatDrawer';
+import MobileChatToggle from './components/MobileChatToggle';
+import MobileWeatherGPT from './components/MobileWeatherGPT';
+import WeeklyForecastFooter, { placeholderWeeklyDays, toWeeklyDays } from './components/WeeklyForecastFooter';
+import { ADVISORIES_ENDPOINT, ALERTS_ENDPOINT, CHAT_ENDPOINT, CLIMATE_ENDPOINT, WEATHER_ENDPOINTS } from './config/api';
+import { useVoiceInput } from './hooks/useVoiceInput';
+import { useVoiceOutput } from './hooks/useVoiceOutput';
 
 type MessageRole = 'user' | 'bot';
 
