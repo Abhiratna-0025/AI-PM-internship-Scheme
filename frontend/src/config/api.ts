@@ -10,17 +10,6 @@
  */
 
 const getApiBaseUrl = (): string => {
-  const envUrl = import.meta.env.VITE_API_BASE_URL;
-
-  if (envUrl) {
-    return envUrl.replace(/\/$/, '');
-  }
-
-  if (import.meta.env.PROD) {
-    return '';
-  }
-
-
   return "https://sih-weathergpt-production.up.railway.app";
 };
 
@@ -32,7 +21,7 @@ const inFlightRequests = new Map<string, Promise<Response>>();
 export async function fetchWithDedup(
   url: string,
   options?: RequestInit
-): Promise<Response> {
+): Promise<Response> {d
   const key = `${options?.method || 'GET'}:${url}`;
 
   const existing = inFlightRequests.get(key);
