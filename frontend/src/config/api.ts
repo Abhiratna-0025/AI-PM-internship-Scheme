@@ -20,9 +20,6 @@ const getApiBaseUrl = (): string => {
     return '';
   }
 
-  if (typeof window !== 'undefined') {
-    return `http://${window.location.hostname}:8080`;
-  }
 
   return "https://sih-weathergpt-production.up.railway.app";
 };
