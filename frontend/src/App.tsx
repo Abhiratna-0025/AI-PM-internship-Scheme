@@ -1,598 +1,709 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Button } from './components/ui/button';
-import { Input } from './components/ui/input';
-import { Badge } from './components/ui/badge';
-import { Avatar, AvatarFallback } from './components/ui/avatar';
+import { useVoiceInput } from './hooks/useVoiceInput';
+import { useVoiceOutput } from './hooks/useVoiceOutput';
+import { 
+  Sparkles,
+  Mic,
+  Send,
+  MapPin,
+  Wind,
+  Droplets,
+  Thermometer,
+  Cloud,
+  Radar,
+  BarChart3,
+  Bell,
+  TrendingUp,
+  Cpu,
+  Layers,
+  Volume2,
+  VolumeX,
+  CheckCircle
+} from 'lucide-react';
+import { WEATHER_ENDPOINTS, ADVISORIES_ENDPOINT, ALERTS_ENDPOINT, CLIMATE_ENDPOINT, CHAT_ENDPOINT } from './config/api';
+import MobileWeatherGPT from './components/MobileWeatherGPT';
+import MobileChatToggle from './components/MobileChatToggle';
+import ChatDrawer from './components/ChatDrawer';
+import WeeklyForecastFooter, { placeholderWeeklyDays, toWeeklyDays } from './components/WeeklyForecastFooter';
 import './App.css';
 
-type Message = {
-  id: string;
-  role: 'user' | 'bot';
-  content: string;
-  timestamp: Date;
-};
+type MessageRole = 'user' | 'bot';
 
-type WeatherInfo = {
-  name: string;
-  country: string;
-  state?: string;
-  temp: number;
-  feelsLike: number;
-  humidity: number;
-  windSpeed: number;
-  windDeg: number;
-  description: string;
-  icon: string;
-  visibility: number;
-};
+const LANGUAGES = [
+  { code: 'en', label: 'English', speechLocale: 'en-IN' },
+  { code: 'hi', label: 'हिन्दी (Hindi)', speechLocale: 'hi-IN' },
+  { code: 'ta', label: 'தமிழ் (Tamil)', speechLocale: 'ta-IN' },
+  { code: 'te', label: 'తెలుగు (Telugu)', speechLocale: 'te-IN' },
+  { code: 'bn', label: 'বাংলা (Bengali)', speechLocale: 'bn-IN' },
+  { code: 'mr', label: 'मराठी (Marathi)', speechLocale: 'mr-IN' },
+  { code: 'gu', label: 'ગુજરાતી (Gujarati)', speechLocale: 'gu-IN' },
+];
+
+
 
 export default function App() {
-  const [messages, setMessages] = useState<Message[]>([
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [chatDrawerOpen, setChatDrawerOpen] = useState(false);
+  const [activeNav, setActiveNav] = useState<'weather' | 'forecast' | 'nwp' | 'sectors' | 'alerts' | 'climate'>('weather');
+  const [selectedLang, setSelectedLang] = useState('en');
+  const [currentCity, setCurrentCity] = useState('Delhi');
+  
+  const [messages, setMessages] = useState<{ id: string; role: MessageRole; content: string; voiceAnswer?: string }[]>([
     {
       id: '1',
       role: 'bot',
-      content: '👋 Hello! I\'m WeatherGPT, your AI-powered weather assistant. Ask me about weather in any city, or click below to get weather for your current location!',
-      timestamp: new Date(),
+      content: "👋 Hello! I'm **WeatherGPT**, your AI meteorological & disaster decision-support assistant aligned with MoES / IMD.\n\nAsk me about live forecasts, crop sowing advisories, NWP models (GFS/ECMWF), or climate trends!",
     },
   ]);
+  
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [locationStatus, setLocationStatus] = useState<'unknown' | 'checking' | 'granted' | 'denied'>('unknown');
+  const [sectorLoading, setSectorLoading] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [currentWeather, setCurrentWeather] = useState<any>(null);
+  const [forecastList, setForecastList] = useState<any[]>([]);
+  const [nwpComparison, setNwpComparison] = useState<any>(null);
+  const [sectorAdvisory, setSectorAdvisory] = useState<any>(null);
+  const [activeSector, setActiveSector] = useState<'agriculture' | 'aviation' | 'marine' | 'urban'>('agriculture');
+  const [alertsList, setAlertsList] = useState<any[]>([]);
+  const [climateInfo, setClimateInfo] = useState<any>(null);
+  const [isSpeakingId, setIsSpeakingId] = useState<string | null>(null);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const activeLangObj = LANGUAGES.find(l => l.code === selectedLang) || LANGUAGES[0];
+
+  const {
+    status: sttStatus,
+    isSupported: sttSupported,
+    startListening,
+    stopListening,
+  } = useVoiceInput({
+    lang: activeLangObj.speechLocale,
+    onTranscript: (text) => {
+      if (!text) return;
+      setInput(text);
+    },
+    onError: (err) => {
+      console.error('Voice error:', err);
+    },
+  });
+
+  const { speak, stop: stopSpeech, isSpeaking } = useVoiceOutput();
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isLoading]);
 
-  const detectWeatherIntent = (text: string): string | null => {
-    const lower = text.toLowerCase();
-    if (lower.includes('weather') || lower.includes('temperature') || lower.includes('forecast') || lower.includes('rain') || lower.includes('sun') || lower.includes('cold') || lower.includes('hot') || lower.includes('humid') || lower.includes('climate')) {
-      const cityMatch = text.match(/(?:in|at|for|of)\s+([A-Z][a-zA-Z\s]+)/i);
-      if (cityMatch) return cityMatch[1].trim();
-      if (lower.includes('here')) return 'current location';
-      return null;
-    }
-    return null;
-  };
+  // Fetch initial meteorological data — consolidated to avoid duplicate advisories calls
+  useEffect(() => {
+    const controller = new AbortController();
 
-  const extractCity = (text: string): string | null => {
-    const pattern1 = /(?:in|at|for|of)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/;
-    const match1 = text.match(pattern1);
-    if (match1 && match1[1]) {
-      return match1[1].trim();
-    }
-
-    const pattern2 = /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:weather|temperature|forecast|climate|conditions)/;
-    const match2 = text.match(pattern2);
-    if (match2 && match2[1]) {
-      return match2[1].trim();
-    }
-
-    const pattern3 = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b/;
-    const match3 = text.match(pattern3);
-    if (match3 && match3[1]) {
-      const city = match3[1].trim();
-      const skipWords = ['Will', 'What', 'How', 'Is', 'Can', 'The', 'This', 'That', 'Here', 'Today', 'Tomorrow', 'Yesterday', 'By', 'In', 'At', 'For', 'Help', 'Hello', 'Hi', 'Hey', 'Give', 'Me', 'Do', 'Does', 'Are', 'There'];
-      if (!skipWords.includes(city)) {
-        return city;
+    const loadAll = async () => {
+      try {
+        await fetchWeatherData(currentCity, controller.signal);
+        await fetchNwpData(currentCity, controller.signal);
+        await fetchSectorData(currentCity, activeSector, controller.signal);
+        await fetchAlertsData(currentCity, controller.signal);
+        await fetchClimateData(currentCity, controller.signal);
+      } catch (e) {
+        if (e instanceof Error && e.name === 'AbortError') {
+          return;
+        }
+        console.warn("Initial data load failed:", e);
       }
-    }
-
-    return null;
-  };
-
-  const getWeatherIcon = (icon: string) => {
-    const iconMap: Record<string, string> = {
-      '01d': '☀️', '01n': '🌙',
-      '02d': '⛅', '02n': '☁️',
-      '03d': '☁️', '03n': '☁️',
-      '04d': '☁️', '04n': '☁️',
-      '09d': '🌧️', '09n': '🌧️',
-      '10d': '🌦️', '10n': '🌧️',
-      '11d': '⛈️', '11n': '⛈️',
-      '13d': '❄️', '13n': '❄️',
-      '50d': '🌫️', '50n': '🌫️',
     };
-    return iconMap[icon] || '🌤️';
-  };
 
-  const fetchWeatherByLocation = async (lat: number, lon: number) => {
+    loadAll();
+
+    return () => {
+      controller.abort();
+    };
+  }, [currentCity, activeSector]);
+
+  const fetchWeatherData = async (city: string, signal?: AbortSignal) => {
     try {
-      const res = await fetch(`http://localhost:8080/api/weather/current?lat=${lat}&lon=${lon}`);
+      const res = await fetch(WEATHER_ENDPOINTS.CURRENT(city), { signal });
       const data = await res.json();
       if (data.success && data.data) {
-        const apiData = data.data as any;
-        return {
-          name: apiData.location?.name || 'Unknown',
-          country: apiData.location?.country || 'Unknown',
-          state: apiData.location?.admin1 || undefined,
-          temp: apiData.temperature,
-          feelsLike: apiData.apparentTemperature,
-          humidity: apiData.humidity,
-          windSpeed: apiData.windSpeed,
-          windDeg: apiData.windDirection,
-          description: apiData.weatherDescription,
-          icon: getWeatherIcon(apiData.weatherCode),
-          visibility: apiData.visibility,
-        };
+        setCurrentWeather(data.data);
       }
-    } catch (error) {
-      console.error('Weather fetch error:', error);
+      const fRes = await fetch(WEATHER_ENDPOINTS.FORECAST(city, 7), { signal });
+      const fData = await fRes.json();
+      if (fData.success && fData.data?.days) {
+        setForecastList(fData.data.days);
+      }
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        return;
+      }
+      console.warn("Weather fetch failed:", e);
     }
-    return null;
   };
 
-  const fetchWeatherByCity = async (city: string) => {
+  const fetchNwpData = async (city: string, signal?: AbortSignal) => {
     try {
-      const res = await fetch(`http://localhost:8080/api/weather/current?location=${encodeURIComponent(city)}`);
+      const res = await fetch(WEATHER_ENDPOINTS.NWP(city), { signal });
       const data = await res.json();
       if (data.success && data.data) {
-        const apiData = data.data as any;
-        return {
-          name: apiData.location.name,
-          country: apiData.location.country,
-          state: apiData.location.admin1 || undefined,
-          temp: apiData.temperature,
-          feelsLike: apiData.apparentTemperature,
-          humidity: apiData.humidity,
-          windSpeed: apiData.windSpeed,
-          windDeg: apiData.windDirection,
-          description: apiData.weatherDescription,
-          icon: getWeatherIcon(apiData.weatherCode),
-          visibility: apiData.visibility,
-        };
+        setNwpComparison(data.data);
       }
-    } catch (error) {
-      console.error('Weather fetch error:', error);
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        return;
+      }
+      console.warn("NWP fetch failed:", e);
     }
-    return null;
   };
 
-  const fetchForecast = async (city: string) => {
+  const fetchSectorData = async (city: string, sector: string, signal?: AbortSignal) => {
+    setSectorLoading(true);
     try {
-      const res = await fetch(`http://localhost:8080/api/weather/forecast?location=${encodeURIComponent(city)}&days=3`);
+      const res = await fetch(ADVISORIES_ENDPOINT(city, sector), { signal });
       const data = await res.json();
       if (data.success && data.data) {
-        return (data.data as any).days.map((day: any) => ({
-          date: day.date,
-          tempMax: day.tempMax,
-          tempMin: day.tempMin,
-          description: day.weatherDescription,
-        }));
+        setSectorAdvisory(data.data);
       }
-    } catch (error) {
-      console.error('Forecast fetch error:', error);
-    }
-    return null;
-  };
-
-  const generateTips = (weather: WeatherInfo): string => {
-    const tips: string[] = [];
-
-    if (weather.humidity >= 80) {
-      tips.push(' 💧 High humidity today — stay hydrated and consider a light, breathable outfit.');
-    } else if (weather.humidity < 30) {
-      tips.push(' 💨 Low humidity — the air is dry, so keep some water handy and use lip balm or moisturizer if needed.');
-    }
-
-    if (weather.windSpeed >= 8) {
-      tips.push(' 💨 Strong winds expected — secure loose outdoor items and be careful with umbrellas.');
-    } else if (weather.windSpeed >= 5) {
-      tips.push(' 🌬️ Breezy conditions — a wind-resistant jacket could come in handy.');
-    }
-
-    if (weather.feelsLike > weather.temp + 3) {
-      tips.push(' 🌡️ It feels hotter than the actual temperature — light clothing and shade breaks are recommended.');
-    } else if (weather.feelsLike < weather.temp - 3) {
-      tips.push(' 🥶 It feels colder than the thermometer reads — layer up if you are heading out.');
-    }
-
-    if (weather.description.toLowerCase().includes('rain') || weather.description.toLowerCase().includes('drizzle') || weather.description.toLowerCase().includes('shower')) {
-      tips.push(' ☔ Carry an umbrella or a raincoat — you might get wet between buildings or while commuting.');
-    }
-    if (weather.description.toLowerCase().includes('thunder')) {
-      tips.push(' ⛈️ Thunderstorm activity possible — avoid open fields and tall isolated trees if outdoors.');
-    }
-    if (weather.description.toLowerCase().includes('snow') || weather.description.toLowerCase().includes('ice')) {
-      tips.push(' ❄️ Slippery surfaces likely — drive or walk carefully and use appropriate footwear.');
-    }
-
-    if (weather.visibility < 2000) {
-      tips.push(' 👁️ Visibility is quite low — take extra caution while driving or crossing roads.');
-    }
-
-    if (weather.temp > 35) {
-      tips.push(' 🔥 Very hot day — limit outdoor activity during peak hours (11 AM–3 PM) and drink plenty of water.');
-    } else if (weather.temp > 30) {
-      tips.push(' ☀️ Warm day ahead — stay in the shade when possible and keep up your water intake.');
-    } else if (weather.temp < 10) {
-      tips.push(' 🧥 Chilly weather — a warm jacket, scarf, and gloves will make being outside more comfortable.');
-    } else if (weather.temp < 15) {
-      tips.push(' 🍂 Cool day — a light jacket or sweater should be enough for most outdoor plans.');
-    }
-
-    if (tips.length === 0) {
-      tips.push(' 🌤️ Pleasant conditions — a great day for a walk, outdoor plans, or just enjoying the weather!');
-    }
-
-    return tips.slice(0, 3).join('');
-  };
-
-  const generateForecastText = (forecast: { date: string; tempMax: number; tempMin: number; description: string }[]): string => {
-    if (!forecast || forecast.length === 0) return '';
-
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const lines: string[] = [];
-
-    forecast.forEach((day, idx) => {
-      const dateObj = new Date(day.date);
-      const dayName = dayNames[dateObj.getDay()];
-      const tempRange = `${Math.round(day.tempMin)}°–${Math.round(day.tempMax)}°C`;
-      let summary = '';
-
-      const desc = day.description.toLowerCase();
-
-      if (desc.includes('rain') || desc.includes('drizzle') || desc.includes('shower')) {
-        summary = 'with rain';
-        if (desc.includes('thunder')) summary = 'with thunderstorms';
-        else if (desc.includes('heavy')) summary = 'with heavy rain';
-      } else if (desc.includes('cloud')) {
-        summary = 'cloudy';
-      } else if (desc.includes('sun') || desc.includes('clear')) {
-        summary = 'sunny and clear';
-      } else if (desc.includes('fog') || desc.includes('mist')) {
-        summary = 'foggy with reduced visibility';
-      } else if (desc.includes('snow') || desc.includes('ice')) {
-        summary = 'snowy';
-      } else {
-        summary = desc;
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        return;
       }
-
-      const trend = day.tempMax > 30 ? 'hot' : day.tempMax > 25 ? 'warm' : day.tempMax > 15 ? 'mild' : 'cool';
-      const feel = day.tempMax - day.tempMin > 10 ? ' with a big day-night swing' : '';
-
-      lines.push(
-        `${idx === 0 ? 'Today' : dayName}, ${dateObj.toLocaleDateString('en', { month: 'short', day: 'numeric' })}: ` +
-        `${summary}, ${tempRange}, ${trend} conditions${feel}.`
-      );
-    });
-
-    return lines.join('\n');
+      console.warn("Sector fetch failed:", e);
+    } finally {
+      setSectorLoading(false);
+    }
   };
 
-  const getUserLocation = useCallback(async () => {
-    setLocationStatus('checking');
+  const fetchAlertsData = async (city: string, signal?: AbortSignal) => {
+    try {
+      const res = await fetch(ALERTS_ENDPOINT(city), { signal });
+      const data = await res.json();
+      if (data.success && data.data?.alerts) {
+        setAlertsList(data.data.alerts);
+      }
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        return;
+      }
+      console.warn("Alerts fetch failed:", e);
+    }
+  };
+
+  const fetchClimateData = async (city: string, signal?: AbortSignal) => {
+    try {
+      const res = await fetch(CLIMATE_ENDPOINT(city), { signal });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setClimateInfo(data.data);
+      }
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        return;
+      }
+      console.warn("Climate fetch failed:", e);
+    }
+  };
+
+  const handleUseMyLocation = () => {
     if (!navigator.geolocation) {
-      setLocationStatus('denied');
-      const msg: Message = {
-        id: Date.now().toString(),
-        role: 'bot',
-        content: '⚠️ Geolocation is not supported by your browser. Please enter a city name manually.',
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, msg]);
+      alert("Geolocation is not supported by your browser");
       return;
     }
-
     navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        setUserLocation({ latitude, longitude });
-        setLocationStatus('granted');
-
-        const weather = await fetchWeatherByLocation(latitude, longitude);
-        if (weather) {
-          const card = `
-            <div class="weather-card">
-              <div class="weather-main">
-                <div class="weather-location"><h3>${weather.name}${weather.state ? ', ' + weather.state : ''}, ${weather.country}</h3></div>
-                <div class="weather-temp-row"><span class="weather-icon">${weather.icon}</span><span class="weather-temp">${Math.round(weather.temp)}°C</span></div>
-                <p class="weather-desc">${weather.description}</p>
-              </div>
-              <div class="weather-details">
-                <div class="detail"><span class="detail-icon">🌡️</span><span>Feels like ${Math.round(weather.feelsLike)}°C</span></div>
-                <div class="detail"><span class="detail-icon">💧</span><span>Humidity: ${weather.humidity}%</span></div>
-                <div class="detail"><span class="detail-icon">💨</span><span>Wind: ${weather.windSpeed} m/s</span></div>
-                <div class="detail"><span class="detail-icon">👁️</span><span>Visibility: ${(weather.visibility / 1000).toFixed(1)} km</span></div>
-              </div>
-            </div>
-          `;
-          const msg1: Message = {
-            id: Date.now().toString(),
-            role: 'bot',
-            content: `📍 **Location detected:** ${weather.name}, ${weather.country}${weather.state ? ', ' + weather.state : ''}\n\n`,
-            timestamp: new Date(),
-          };
-          const msg2: Message = {
-            id: (Date.now() + 1).toString(),
-            role: 'bot',
-            content: card,
-            timestamp: new Date(),
-          };
-          setMessages(prev => [...prev, msg1, msg2]);
-        }
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setCurrentCity(`${latitude.toFixed(2)}, ${longitude.toFixed(2)}`);
       },
-      async (error) => {
-        console.error('Geolocation error:', error);
-        setLocationStatus('denied');
-        const msg1: Message = {
-          id: Date.now().toString(),
-          role: 'bot',
-          content: '📍 Location access was denied. Showing weather for a default location. You can ask for any city!',
-          timestamp: new Date(),
-        };
-        setMessages(prev => [...prev, msg1]);
-        const weather = await fetchWeatherByCity('Delhi');
-        if (weather) {
-          const card = `
-            <div class="weather-card">
-              <div class="weather-main">
-                <div class="weather-location"><h3>${weather.name}, ${weather.country}</h3></div>
-                <div class="weather-temp-row"><span class="weather-icon">${weather.icon}</span><span class="weather-temp">${Math.round(weather.temp)}°C</span></div>
-                <p class="weather-desc">${weather.description}</p>
-              </div>
-              <div class="weather-details">
-                <div class="detail"><span class="detail-icon">🌡️</span><span>Feels like ${Math.round(weather.feelsLike)}°C</span></div>
-                <div class="detail"><span class="detail-icon">💧</span><span>Humidity: ${weather.humidity}%</span></div>
-                <div class="detail"><span class="detail-icon">💨</span><span>Wind: ${weather.windSpeed} m/s</span></div>
-                <div class="detail"><span class="detail-icon">👁️</span><span>Visibility: ${(weather.visibility / 1000).toFixed(1)} km</span></div>
-              </div>
-            </div>
-          `;
-          const msg2: Message = {
-            id: (Date.now() + 1).toString(),
-            role: 'bot',
-            content: card,
-            timestamp: new Date(),
-          };
-          setMessages(prev => [...prev, msg2]);
-        }
-      }
+      (err) => alert("Location access error: " + err.message)
     );
-  }, []);
+  };
 
-  const handleSend = useCallback(async () => {
-    if (!input.trim() || isLoading) return;
+  const toggleVoice = useCallback(() => {
+    if (sttStatus === 'listening') {
+      stopListening();
+      setVoiceEnabled(false);
+    } else {
+      stopSpeech();
+      startListening();
+      setVoiceEnabled(true);
+    }
+  }, [sttStatus, startListening, stopListening, stopSpeech]);
 
-    const userMessage = input.trim();
-    setInput('');
+  const handleSend = useCallback(async (customMessage?: string) => {
+    const text = (customMessage || input).trim();
+    if (!text || isLoading) return;
+
+    if (!customMessage) setInput('');
     setIsLoading(true);
 
-    const userMsg: Message = {
+    const userMsg = {
       id: Date.now().toString(),
-      role: 'user',
-      content: userMessage,
-      timestamp: new Date(),
+      role: 'user' as MessageRole,
+      content: text,
     };
     setMessages(prev => [...prev, userMsg]);
 
     try {
-      let botResponse = '';
-      let weatherInfo: WeatherInfo | null = null;
-      let forecastInfo: { date: string; tempMax: number; tempMin: number; description: string }[] | null = null;
+      const res = await fetch(CHAT_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: text,
+          language: selectedLang,
+          sector: activeSector,
+          sessionId: 'desktop-session',
+        }),
+      });
+      const data = await res.json();
 
-      const city = extractCity(userMessage) || detectWeatherIntent(userMessage);
+      if (data.success && data.data) {
+        const botData = data.data;
+        const botMsg = {
+          id: (Date.now() + 1).toString(),
+          role: 'bot' as MessageRole,
+          content: botData.answer || 'Query processed.',
+          voiceAnswer: botData.voiceAnswer || botData.answer,
+        };
+        setMessages(prev => [...prev, botMsg]);
 
-      if (userMessage.toLowerCase().includes('my location') || userMessage.toLowerCase().includes('current location') || userMessage.toLowerCase().includes('where i am')) {
-        if (userLocation) {
-          weatherInfo = await fetchWeatherByLocation(userLocation.latitude, userLocation.longitude);
-          if (weatherInfo) forecastInfo = await fetchForecast(weatherInfo.name);
-          botResponse = `📍 Here's the weather for your **current location** in ${weatherInfo?.name || 'your area'}:`;
-          const locTips = weatherInfo ? generateTips(weatherInfo) : '';
-          const locForecast = (weatherInfo && forecastInfo) ? generateForecastText(forecastInfo) : '';
-          let locFull = botResponse;
-          if (locTips) locFull += '\n\n' + locTips;
-          if (locForecast) locFull += '\n\n**3-day outlook:**\n' + locForecast;
-          botResponse = locFull;
-        } else {
-          botResponse = '📍 Let me detect your location first...';
-          getUserLocation();
-          setIsLoading(false);
-          return;
+        if (botData.location?.name) {
+          setCurrentCity(botData.location.name);
         }
-      } else if (city) {
-        weatherInfo = await fetchWeatherByCity(city);
-        if (weatherInfo) forecastInfo = await fetchForecast(weatherInfo.name);
-        if (weatherInfo) {
-          botResponse = `Here's the weather for **${weatherInfo.name}${weatherInfo.state ? ', ' + weatherInfo.state : ''}, ${weatherInfo.country}**:`;
-        } else {
-          botResponse = `❌ Sorry, I couldn't find weather data for **${city}**. Please check the city name and try again.`;
+
+        if (voiceEnabled && botData.voiceAnswer) {
+          speak(botData.voiceAnswer, activeLangObj.speechLocale);
         }
       } else {
-        const greetings = [
-          "I'm here to help with weather information! 🌤️",
-          "Try asking me about the weather in a specific city!",
-          "I can tell you the temperature, forecast, and more!",
-          "What city would you like to know about?",
-        ];
-        botResponse = greetings[Math.floor(Math.random() * greetings.length)];
-
-        if (userMessage.toLowerCase().includes('hello') || userMessage.toLowerCase().includes('hi') || userMessage.toLowerCase().includes('hey')) {
-          botResponse = "Hello! 👋 I'm WeatherGPT. Ask me about weather in any city! For example: *'What's the weather in Delhi?'* or click the button below to get weather for your **current location**.";
-        } else if (userMessage.toLowerCase().includes('help')) {
-          botResponse = "I can help you with:\n\n🌤️ Current weather conditions\n📊 3-day forecasts\n🌡️ Temperature & feels like\n💧 Humidity & wind info\n📍 Your current location weather\n\nJust ask me about any city! For example: *'Weather in London'* or click the 👇 button below.";
-        } else if (userMessage.toLowerCase().includes('thank')) {
-          botResponse = "You're welcome! 😊 Feel free to ask anytime about weather. Stay informed! 🌤️";
-        } else if (userMessage.toLowerCase().includes('current') || userMessage.toLowerCase().includes('here')) {
-          getUserLocation();
-          setIsLoading(false);
-          return;
-        }
+        setMessages(prev => [...prev, {
+          id: (Date.now() + 1).toString(),
+          role: 'bot',
+          content: data.message || "Query could not be processed.",
+        }]);
       }
-
-      if (weatherInfo && !botResponse.includes('**')) {
-        botResponse = `Here's the weather for **${weatherInfo.name}${weatherInfo.state ? ', ' + weatherInfo.state : ''}, ${weatherInfo.country}**:`;
-      }
-
-      const tips = weatherInfo ? generateTips(weatherInfo) : '';
-      const forecastText = (weatherInfo && forecastInfo) ? generateForecastText(forecastInfo) : '';
-
-      let fullResponse = botResponse;
-      if (tips) fullResponse += '\n\n' + tips;
-      if (forecastText) fullResponse += '\n\n**3-day outlook:**\n' + forecastText;
-
-      const introMsg: Message = {
+    } catch (e) {
+      setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'bot',
-        content: fullResponse,
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, introMsg]);
-
-      if (weatherInfo) {
-        setTimeout(() => {
-          const card = `
-            <div class="weather-card">
-              <div class="weather-main">
-                <div class="weather-location"><h3>${weatherInfo.name}${weatherInfo.state ? ', ' + weatherInfo.state : ''}, ${weatherInfo.country}</h3></div>
-                <div class="weather-temp-row"><span class="weather-icon">${weatherInfo.icon}</span><span class="weather-temp">${Math.round(weatherInfo.temp)}°C</span></div>
-                <p class="weather-desc">${weatherInfo.description}</p>
-              </div>
-              <div class="weather-details">
-                <div class="detail"><span class="detail-icon">🌡️</span><span>Feels like ${Math.round(weatherInfo.feelsLike)}°C</span></div>
-                <div class="detail"><span class="detail-icon">💧</span><span>Humidity: ${weatherInfo.humidity}%</span></div>
-                <div class="detail"><span class="detail-icon">💨</span><span>Wind: ${weatherInfo.windSpeed} m/s</span></div>
-                <div class="detail"><span class="detail-icon">👁️</span><span>Visibility: ${(weatherInfo.visibility / 1000).toFixed(1)} km</span></div>
-              </div>
-              ${forecastInfo && forecastInfo.length > 0 ? `
-                <div class="forecast-section">
-                  <h4>3-DAY FORECAST</h4>
-                  <div class="forecast-grid">
-                    ${forecastInfo.map(day => `
-                      <div class="forecast-day">
-                        <span class="forecast-date">${new Date(day.date).toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
-                        <span class="forecast-temp">${Math.round(day.tempMax)}° / ${Math.round(day.tempMin)}°</span>
-                        <span class="forecast-desc">${day.description}</span>
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
-            </div>
-          `;
-          const cardMsg: Message = {
-            id: (Date.now() + 2).toString(),
-            role: 'bot',
-            content: card,
-            timestamp: new Date(),
-          };
-          setMessages(prev => [...prev, cardMsg]);
-        }, 100);
-      }
-    } catch (error) {
-      const errMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'bot',
-        content: '⚠️ Oops! Something went wrong. Please try again.',
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, errMsg]);
+        content: "⚠️ Unable to connect to backend service.",
+      }]);
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, userLocation]);
+  }, [input, isLoading, selectedLang, activeSector, voiceEnabled, activeLangObj, speak]);
 
-  const quickActions = [
-    { label: '📍 My Location', action: '' },
-    { label: '🌤️ Delhi', action: 'Weather in Delhi' },
-    { label: '🌧️ Mumbai', action: 'Is it raining in Mumbai?' },
-    { label: '❄️ London', action: 'Temperature in London' },
-    { label: '☀️ Tokyo', action: 'Forecast for Tokyo' },
-  ];
+  const handleSpeakText = (msg: { id: string; content: string; voiceAnswer?: string }) => {
+    if (isSpeaking && isSpeakingId === msg.id) {
+      stopSpeech();
+      setIsSpeakingId(null);
+    } else {
+      stopSpeech();
+      const textToSpeak = (msg.voiceAnswer || msg.content).replace(/[*#`_~]/g, '');
+      speak(textToSpeak, activeLangObj.speechLocale);
+      setIsSpeakingId(msg.id);
+    }
+  };
 
-  return (
-    <div className="chatbot-app">
-      <header className="chatbot-header">
-        <div className="chatbot-logo">
-          <Avatar className="logo-avatar">
-            <AvatarFallback className="logo-fallback">🌤️</AvatarFallback>
-          </Avatar>
-          <div className="logo-text">
-            <h1>WeatherGPT</h1>
-            <p>AI-Powered Weather Intelligence</p>
-          </div>
-        </div>
-        <div className="header-actions">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={getUserLocation}
-            disabled={locationStatus === 'checking'}
-            className="locate-btn"
+  // Mobile viewport handler
+  if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+    return <MobileWeatherGPT />;
+  }
+
+  // Desktop Interface
+  const weeklyDays = forecastList.length > 0 ? toWeeklyDays(forecastList) : placeholderWeeklyDays();  return (
+    <div className="simple-weathergpt">
+      <div className="glass-orb glass-orb-1" aria-hidden="true" />
+        <div className="glass-orb glass-orb-2" aria-hidden="true" />
+        <div className="glass-orb glass-orb-3" aria-hidden="true" />
+      {/* Sidebar */}
+      <aside className="sidebar">
+        {/* Branding Logo — Breeze icon from Figma */}
+        <button className="sidebar-logo" title="WeatherGPT" aria-label="WeatherGPT">
+          <svg className="breeze-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            {/* Outer circle */}
+            <path d="M2 16C2 23.7268 8.2732 30 16 30C23.7268 30 30 23.7268 30 16C30 8.2732 23.7268 2 16 2C8.2732 2 2 8.2732 2 16V16" stroke="white" strokeOpacity="0.225" strokeWidth="2.2" strokeLinecap="round"/>
+            {/* Wave 1 */}
+            <path d="M9 13.5C11.5 12 14 12 16.5 13.5C19 15 21.5 15 24 13.5" stroke="white" strokeOpacity="0.9" strokeWidth="2.2" strokeLinecap="round"/>
+            {/* Wave 2 */}
+            <path d="M8 17.5C10.5 16 13 16 15.5 17.5C18 19 20.5 19 23 17.5" stroke="white" strokeOpacity="0.9" strokeWidth="2.2" strokeLinecap="round"/>
+            {/* Wave 3 */}
+            <path d="M10 21.5C12 20.5 14 20.5 16 21.5C18 22.5 20 22.5 22 21.5" stroke="white" strokeOpacity="0.9" strokeWidth="2.2" strokeLinecap="round"/>
+          </svg>
+        </button>
+
+      <nav className="sidebar-nav">
+          <button
+            className={`sidebar-item ${activeNav === 'weather' ? 'active' : ''}`}
+            onClick={() => setActiveNav('weather')}
+            title="Nowcasting & Live Weather"
+            aria-label="Nowcasting & Live Weather"
           >
-            {locationStatus === 'checking' ? '⏳ Detecting...' : locationStatus === 'granted' ? '✓ Located' : '📍 My Location'}
-          </Button>
-          <Badge variant="secondary" className="status-badge">● Online</Badge>
-        </div>
-      </header>
+            <Radar size={20} />
+          </button>
+          <button
+            className={`sidebar-item ${activeNav === 'forecast' ? 'active' : ''}`}
+            onClick={() => setActiveNav('forecast')}
+            title="7-Day Numerical Forecast"
+            aria-label="7-Day Numerical Forecast"
+          >
+            <BarChart3 size={20} />
+          </button>
+          <button
+            className={`sidebar-item ${activeNav === 'nwp' ? 'active' : ''}`}
+            onClick={() => setActiveNav('nwp')}
+            title="NWP Models (GFS vs ECMWF vs WRF)"
+            aria-label="NWP Models (GFS vs ECMWF vs WRF)"
+          >
+            <Cpu size={20} />
+          </button>
+          <button
+            className={`sidebar-item ${activeNav === 'sectors' ? 'active' : ''}`}
+            onClick={() => setActiveNav('sectors')}
+            title="Sector Decision Support (Agri/Aviation/Marine)"
+            aria-label="Sector Decision Support (Agri/Aviation/Marine)"
+          >
+            <Layers size={20} />
+          </button>
+          <button
+            className={`sidebar-item ${activeNav === 'alerts' ? 'active' : ''}`}
+            onClick={() => setActiveNav('alerts')}
+            title="IMD Extreme Weather Alerts"
+            aria-label="IMD Extreme Weather Alerts"
+          >
+            <Bell size={20} />
+          </button>
+          <button
+            className={`sidebar-item ${activeNav === 'climate' ? 'active' : ''}`}
+            onClick={() => setActiveNav('climate')}
+            title="Climate Trend Analytics"
+            aria-label="Climate Trend Analytics"
+          >
+            <TrendingUp size={20} />
+          </button>
+        </nav>
 
-      <main className="chatbot-main">
-        <div className="chat-messages">
+      </aside>
+
+      {/* Main Content Area */}
+      <main className="main-content">
+        {/* Header */}
+        <header className="simple-header">
+          <div className="header-brand">
+            <div className="header-logo-icon">
+              <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M2 16C2 23.7268 8.2732 30 16 30C23.7268 30 30 23.7268 30 16C30 8.2732 23.7268 2 16 2C8.2732 2 2 8.2732 2 16V16" stroke="currentColor" strokeOpacity="0.225" strokeWidth="2.2" strokeLinecap="round"/>
+                <path d="M9 13.5C11.5 12 14 12 16.5 13.5C19 15 21.5 15 24 13.5" stroke="currentColor" strokeOpacity="0.9" strokeWidth="2.2" strokeLinecap="round"/>
+                <path d="M8 17.5C10.5 16 13 16 15.5 17.5C18 19 20.5 19 23 17.5" stroke="currentColor" strokeOpacity="0.9" strokeWidth="2.2" strokeLinecap="round"/>
+                <path d="M10 21.5C12 20.5 14 20.5 16 21.5C18 22.5 20 22.5 22 21.5" stroke="currentColor" strokeOpacity="0.9" strokeWidth="2.2" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <div className="header-title-group">
+              <h1>WeatherGPT</h1>
+              <p className="header-subtitle">AI-Powered Meteorological Intelligence</p>
+            </div>
+          </div>
+
+          <nav className="header-nav">
+            <button className={`header-nav-item ${activeNav === 'weather' ? 'active' : ''}`} onClick={() => setActiveNav('weather')}>
+              Nowcasting
+            </button>
+            <button className={`header-nav-item ${activeNav === 'forecast' ? 'active' : ''}`} onClick={() => setActiveNav('forecast')}>
+              Forecast
+            </button>
+            <button className={`header-nav-item ${activeNav === 'nwp' ? 'active' : ''}`} onClick={() => setActiveNav('nwp')}>
+              NWP Models
+            </button>
+            <button className={`header-nav-item ${activeNav === 'sectors' ? 'active' : ''}`} onClick={() => setActiveNav('sectors')}>
+              Sectors
+            </button>
+            <button className={`header-nav-item ${activeNav === 'alerts' ? 'active' : ''}`} onClick={() => setActiveNav('alerts')}>
+              Alerts
+            </button>
+            <button className={`header-nav-item ${activeNav === 'climate' ? 'active' : ''}`} onClick={() => setActiveNav('climate')}>
+              Climate
+            </button>
+          </nav>
+
+          <div className="header-actions">
+            <button className="header-action-btn" onClick={handleUseMyLocation} title="Use My Location" aria-label="Use My Location">
+              <MapPin size={16} />
+            </button>
+            <button className={`header-action-btn voice-btn ${sttStatus === 'listening' ? 'active' : ''}`} onClick={toggleVoice} disabled={!sttSupported} title="Voice Query" aria-label="Voice Query">
+              <Mic size={16} />
+              <span className="voice-label">{sttStatus === 'listening' ? 'Listening...' : 'Voice'}</span>
+            </button>
+            <button className="header-action-btn chat-btn" onClick={() => setChatDrawerOpen(!chatDrawerOpen)} title="Open Chat" aria-label="Open Chat">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              <span className="chat-label">Chat</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Dynamic Panels based on Sidebar Navigation */}
+        <div className="dashboard-view-container">
+          {/* Active Panel 1: Live Nowcast */}
+          {activeNav === 'weather' && currentWeather && (
+            <div className="weather-card-simple">
+              <div className="weather-card-header">
+                <MapPin size={16} />
+                <span>{currentWeather.location?.name}, {currentWeather.location?.country}</span>
+                <span style={{ marginLeft: 'auto', fontSize: '11px', color: '#94a3b8' }}>Live Observation</span>
+              </div>
+              <div className="weather-card-main">
+                <span className="weather-temp">{Math.round(currentWeather.temperature)}°C</span>
+                <span className="weather-desc">{currentWeather.weatherDescription}</span>
+              </div>
+              <div className="weather-card-metrics">
+                <div className="metric">
+                  <Thermometer size={14} />
+                  <span>Feels {Math.round(currentWeather.apparentTemperature || currentWeather.temperature)}°C</span>
+                </div>
+                <div className="metric">
+                  <Droplets size={14} />
+                  <span>{currentWeather.humidity}% humidity</span>
+                </div>
+                <div className="metric">
+                  <Wind size={14} />
+                  <span>{currentWeather.windSpeed} km/h wind</span>
+                </div>
+                <div className="metric">
+                  <Cloud size={14} />
+                  <span>{currentWeather.pressure} hPa</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Active Panel 2: 7-Day Forecast */}
+          {activeNav === 'forecast' && (
+            <div className="forecast-panel-desktop">
+              <h3 style={{ margin: '0 0 12px', fontSize: '16px' }}>📅 7-Day Numerical Weather Forecast for {currentCity}</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '10px' }}>
+                {forecastList.map((day, idx) => (
+                  <div key={idx} className="forecast-day-glass">
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#38bdf8' }}>{idx === 0 ? 'Today' : (idx === 1 ? 'Tomorrow' : day.date)}</div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, margin: '6px 0' }}>{Math.round(day.tempMax)}° / {Math.round(day.tempMin)}°</div>
+                    <div style={{ fontSize: '11px', color: '#cbd5e1' }}>{day.weatherDescription}</div>
+                    <div style={{ fontSize: '11px', color: '#67e8f9', marginTop: '4px' }}>🌧️ {day.precipitationProbabilityMax}%</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Active Panel 3: NWP Models */}
+          {activeNav === 'nwp' && nwpComparison && (
+            <div className="nwp-panel-desktop">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <h3 style={{ margin: 0, fontSize: '16px' }}>🛰️ Numerical Weather Prediction (NWP) Multi-Model Ensemble</h3>
+                <span style={{ background: '#0284c7', color: 'white', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 700 }}>
+                  Consensus: {nwpComparison.consensus?.consensusScorePercentage}% ({nwpComparison.consensus?.confidenceLevel})
+                </span>
+              </div>
+              <p style={{ fontSize: '13px', color: '#cbd5e1', margin: '0 0 12px' }}>{nwpComparison.consensus?.synopticSummary}</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                {nwpComparison.models?.map((m: any, idx: number) => (
+                  <div key={idx} style={{ background: 'rgba(2, 6, 23, 0.6)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <strong style={{ color: '#38bdf8' }}>{m.modelName}</strong> ({m.resolution})
+                    <div style={{ fontSize: '12px', margin: '4px 0' }}>Max: {m.maxTemp}°C | Min: {m.minTemp}°C</div>
+                    <div style={{ fontSize: '12px', color: '#94a3b8' }}>Rain: {m.totalPrecipitation} mm | Wind: {m.maxWindSpeed} km/h</div>
+                    <div style={{ fontSize: '11px', color: '#67e8f9', marginTop: '4px' }}>{m.synopticCondition}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Active Panel 4: Sector Advisories */}
+          {activeNav === 'sectors' && (
+            <div className="sector-panel-desktop">
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                <button 
+                  onClick={() => setActiveSector('agriculture')}
+                  style={{ background: activeSector === 'agriculture' ? '#0284c7' : 'rgba(255,255,255,0.05)', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                >
+                  🌾 Agriculture / Farmers
+                </button>
+                <button 
+                  onClick={() => setActiveSector('aviation')}
+                  style={{ background: activeSector === 'aviation' ? '#0284c7' : 'rgba(255,255,255,0.05)', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                >
+                  ✈️ Aviation (METAR)
+                </button>
+                <button 
+                  onClick={() => setActiveSector('marine')}
+                  style={{ background: activeSector === 'marine' ? '#0284c7' : 'rgba(255,255,255,0.05)', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                >
+                  ⚓ Marine & Fisheries
+                </button>
+                <button 
+                  onClick={() => setActiveSector('urban')}
+                  style={{ background: activeSector === 'urban' ? '#0284c7' : 'rgba(255,255,255,0.05)', color: 'white', border: 'none', padding: '6px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                >
+                  🏙️ Smart City
+                </button>
+              </div>
+
+              {sectorLoading ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: '#94a3b8' }}>
+                  <p>Loading {activeSector} advisory...</p>
+                  <div style={{ animation: 'pulse 1.5s ease-in-out infinite', opacity: 0.6 }}>⏳</div>
+                </div>
+              ) : (
+                <>
+                  {activeSector === 'agriculture' && sectorAdvisory?.agriculture && (
+                    <div style={{ fontSize: '12px', lineHeight: '1.7', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)', padding: '12px', borderRadius: '8px' }}>
+                        <p style={{ margin: '0 0 4px', fontWeight: 600, color: '#86efac' }}>🌾 Sowing Advice</p>
+                        <p style={{ margin: 0, color: '#cbd5e1' }}>{sectorAdvisory.agriculture.sowingAdvisory}</p>
+                      </div>
+                      <div style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '12px', borderRadius: '8px' }}>
+                        <p style={{ margin: '0 0 4px', fontWeight: 600, color: '#93c5fd' }}>💧 Irrigation</p>
+                        <p style={{ margin: 0, color: '#cbd5e1' }}>{sectorAdvisory.agriculture.irrigationRecommendation}</p>
+                      </div>
+                      <div style={{ background: 'rgba(168, 85, 247, 0.1)', border: '1px solid rgba(168, 85, 247, 0.3)', padding: '12px', borderRadius: '8px' }}>
+                        <p style={{ margin: '0 0 4px', fontWeight: 600, color: '#d8b4fe' }}>🧪 Spraying</p>
+                        <p style={{ margin: 0, color: '#cbd5e1' }}>{sectorAdvisory.agriculture.sprayingWindow}</p>
+                      </div>
+                      <div style={{ background: 'rgba(249, 115, 22, 0.1)', border: '1px solid rgba(249, 115, 22, 0.3)', padding: '12px', borderRadius: '8px' }}>
+                        <p style={{ margin: '0 0 4px', fontWeight: 600, color: '#fed7aa' }}>📊 Soil & Pest</p>
+                        <p style={{ margin: 0, color: '#cbd5e1' }}>Moisture: <strong>{sectorAdvisory.agriculture.soilMoistureIndex}%</strong> | Risk: <strong style={{ color: '#ff6b6b' }}>{sectorAdvisory.agriculture.pestDiseaseRisk}</strong></p>
+                      </div>
+                    </div>
+                  )}
+                  {activeSector === 'aviation' && sectorAdvisory?.aviation && (
+                    <div style={{ fontSize: '12px', lineHeight: '1.7', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '12px', borderRadius: '8px' }}>
+                        <p style={{ margin: '0 0 4px', fontWeight: 600 }}>✈️ Flight Category</p>
+                        <p style={{ margin: 0, color: '#cbd5e1', fontWeight: 700 }}>{sectorAdvisory.aviation.flightCategory}</p>
+                      </div>
+                      <div style={{ background: 'rgba(17, 24, 39, 0.8)', border: '1px solid rgba(255, 255, 255, 0.1)', padding: '12px', borderRadius: '8px', fontFamily: 'monospace', fontSize: '11px', overflow: 'auto' }}>
+                        <p style={{ margin: 0, color: '#93c5fd' }}>{sectorAdvisory.aviation.metarCode}</p>
+                      </div>
+                      <div style={{ background: 'rgba(14, 165, 233, 0.1)', border: '1px solid rgba(14, 165, 233, 0.3)', padding: '12px', borderRadius: '8px' }}>
+                        <p style={{ margin: 0, color: '#cbd5e1' }}>👁️ Visibility: <strong>{sectorAdvisory.aviation.visibilityKm}</strong> km | 🌫️ Ceiling: <strong>{sectorAdvisory.aviation.cloudCeiling}</strong></p>
+                      </div>
+                    </div>
+                  )}
+                  {activeSector === 'marine' && sectorAdvisory?.marine && (
+                    <div style={{ fontSize: '12px', lineHeight: '1.7', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ background: 'rgba(6, 182, 212, 0.1)', border: '1px solid rgba(6, 182, 212, 0.3)', padding: '12px', borderRadius: '8px' }}>
+                        <p style={{ margin: '0 0 4px', fontWeight: 600, color: '#67e8f9' }}>⚓ Fishermen Directive</p>
+                        <p style={{ margin: 0, color: '#cbd5e1' }}>{sectorAdvisory.marine.fishermenAction}</p>
+                      </div>
+                      <div style={{ background: 'rgba(79, 172, 254, 0.1)', border: '1px solid rgba(79, 172, 254, 0.3)', padding: '12px', borderRadius: '8px' }}>
+                        <p style={{ margin: '0 0 4px', fontWeight: 600, color: '#bfdbfe' }}>🌊 Sea State</p>
+                        <p style={{ margin: 0, color: '#cbd5e1' }}>{sectorAdvisory.marine.seaState} | Wave: <strong>{sectorAdvisory.marine.waveHeightMeters}m</strong> | Wind: <strong>{sectorAdvisory.marine.windSpeedKnots}</strong> kt</p>
+                      </div>
+                    </div>
+                  )}
+                  {activeSector === 'urban' && sectorAdvisory?.smartCity && (
+                    <div style={{ fontSize: '12px', lineHeight: '1.7', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ background: 'rgba(217, 119, 6, 0.1)', border: '1px solid rgba(217, 119, 6, 0.3)', padding: '12px', borderRadius: '8px' }}>
+                        <p style={{ margin: '0 0 4px', fontWeight: 600, color: '#fcd34d' }}>🌊 Flood Risk</p>
+                        <p style={{ margin: 0, color: '#cbd5e1' }}>{sectorAdvisory.smartCity.waterloggingFloodRisk}</p>
+                      </div>
+                      <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '12px', borderRadius: '8px' }}>
+                        <p style={{ margin: '0 0 4px', fontWeight: 600, color: '#fca5a5' }}>🌡️ Heat & Safety</p>
+                        <p style={{ margin: 0, color: '#cbd5e1' }}>Heat Index: <strong>{sectorAdvisory.smartCity.urbanHeatIslandIndex}</strong> | Labor: <strong>{sectorAdvisory.smartCity.outdoorLaborSafety}</strong></p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Active Panel 5: Extreme Weather Alerts */}
+          {activeNav === 'alerts' && (
+            <div className="alerts-panel-desktop">
+              <h3 style={{ margin: '0 0 12px', fontSize: '16px' }}>🚨 IMD Colour-Coded Early Warnings & Alerts</h3>
+              {alertsList.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: '#10b981' }}>
+                  <CheckCircle size={36} />
+                  <p>🟢 <strong>IMD Green: Normal Weather Conditions</strong></p>
+                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>No severe weather warnings active for {currentCity}.</span>
+                </div>
+              ) : (
+                alertsList.map((alert: any) => (
+                  <div key={alert.id} style={{ background: 'rgba(2, 6, 23, 0.5)', borderLeft: '4px solid #f59e0b', padding: '10px 14px', borderRadius: '6px', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', gap: '8px', fontSize: '11px', marginBottom: '4px' }}>
+                      <span style={{ background: '#ef4444', color: 'white', padding: '1px 6px', borderRadius: '4px' }}>{alert.severity}</span>
+                      <span style={{ color: '#38bdf8' }}>{alert.informationClass}</span>
+                    </div>
+                    <strong style={{ fontSize: '14px' }}>{alert.title}</strong>
+                    <p style={{ margin: '4px 0', fontSize: '12px', color: '#cbd5e1' }}>{alert.description}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* Active Panel 6: Climate Trends */}
+          {activeNav === 'climate' && climateInfo && (
+            <div className="climate-panel-desktop">
+              <h3 style={{ margin: '0 0 12px', fontSize: '16px' }}>📈 10-Year Climate Trend Analysis ({climateInfo.analysisPeriod})</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '16px' }}>
+                <div style={{ background: 'rgba(2, 6, 23, 0.6)', padding: '10px', borderRadius: '8px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>Warming Trend</span>
+                  <div style={{ fontSize: '18px', fontWeight: 800, color: '#f87171' }}>+{climateInfo.warmingRatePerDecade}°C / dec</div>
+                </div>
+                <div style={{ background: 'rgba(2, 6, 23, 0.6)', padding: '10px', borderRadius: '8px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>Baseline Normal Temp</span>
+                  <div style={{ fontSize: '18px', fontWeight: 800 }}>{climateInfo.baselineMeanTemperature}°C</div>
+                </div>
+                <div style={{ background: 'rgba(2, 6, 23, 0.6)', padding: '10px', borderRadius: '8px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>Annual Rain Baseline</span>
+                  <div style={{ fontSize: '18px', fontWeight: 800 }}>{climateInfo.baselineAnnualPrecipitation} mm</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Chat Messages Flow */}
+        <div className="simple-chat">
           {messages.map((msg) => (
             <div key={msg.id} className={`message ${msg.role}`}>
-              <Avatar className="message-avatar">
-                <AvatarFallback>{msg.role === 'bot' ? '🌤️' : '👤'}</AvatarFallback>
-              </Avatar>
-              <div className="message-content">
-                {msg.role === 'bot' ? (
-                  <div dangerouslySetInnerHTML={{ __html: msg.content }} />
-                ) : (
-                  <p>{msg.content}</p>
+              <div className="message-bubble">
+                {msg.content.split('\n').map((line, idx) => (
+                  <p key={idx} className={line.startsWith('•') ? 'message-bullet' : (line.startsWith('**') ? 'message-bold' : '')}>
+                    {line.replace(/\*\*/g, '')}
+                  </p>
+                ))}
+
+                {msg.role === 'bot' && (
+                  <button 
+                    className="read-aloud-btn" 
+                    onClick={() => handleSpeakText(msg)}
+                    style={{ background: 'transparent', border: 'none', color: '#38bdf8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px', fontSize: '12px' }}
+                  >
+                    {isSpeaking && isSpeakingId === msg.id ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                    <span>{isSpeaking && isSpeakingId === msg.id ? "Stop Speech" : "Listen"}</span>
+                  </button>
                 )}
-                <span className="message-time">
-                  {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
               </div>
             </div>
           ))}
           {isLoading && (
             <div className="message bot typing">
-              <Avatar className="message-avatar">
-                <AvatarFallback>🌤️</AvatarFallback>
-              </Avatar>
-              <div className="message-content">
-                <div className="typing-indicator">
-                  <span></span><span></span><span></span>
-                </div>
+              <div className="typing-dots">
+                <span></span><span></span><span></span>
               </div>
             </div>
           )}
           <div ref={messagesEndRef} />
         </div>
 
-        {messages.length <= 1 && (
-          <div className="quick-actions">
-            <p className="quick-actions-title">Try asking me or click a button:</p>
-            <div className="quick-actions-grid">
-              {quickActions.map((qa, idx) => (
-                <Button
-                  key={idx}
-                  variant={qa.action === '' ? 'default' : 'outline'}
-                  className={qa.action === '' ? 'locate-quick-btn' : 'quick-action-btn'}
-                  onClick={() => {
-                    if (qa.action === '') {
-                      getUserLocation();
-                    } else {
-                      setInput(qa.action);
-                      inputRef.current?.focus();
-                    }
-                  }}
-                >
-                  {qa.label}
-                </Button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="chat-input-area">
-          <div className="chat-input-container">
-            <Input
+        {/* Input Area */}
+        <div className="input-area">
+          <div className="input-container">
+            <input
               ref={inputRef}
               type="text"
-              placeholder="Ask about weather... (e.g., 'What's the weather in Delhi?')"
+              placeholder={voiceEnabled ? 'Listening in ' + activeLangObj.label + '...' : "Ask WeatherGPT in " + activeLangObj.label + "... (e.g., 'Crop sowing in Pune', 'Rain in Delhi')"}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
@@ -601,21 +712,46 @@ export default function App() {
                   handleSend();
                 }
               }}
-              className="chat-input"
+              className={voiceEnabled ? 'voice-active' : ''}
             />
-            <Button onClick={handleSend} disabled={!input.trim() || isLoading} className="send-btn">
-              {isLoading ? '...' : 'Send'}
-            </Button>
+            <button
+              className={`mic-btn ${voiceEnabled ? 'active' : ''}`}
+              onClick={toggleVoice}
+              disabled={!sttSupported}
+              title="Voice Input"
+              aria-label="Voice Input"
+            >
+              <Mic size={20} />
+            </button>
+            <button
+              className="send-btn"
+              onClick={() => handleSend()}
+              disabled={!input.trim() || isLoading}
+              aria-label="Send message"
+            >
+              <Send size={18} />
+            </button>
           </div>
-          <div className="input-hint">
-            Press Enter to send • Ask about any city or click 📍 for your location
-          </div>
+          <p className="input-hint">
+            Multilingual Support Active ({activeLangObj.label}) • Press Enter to send • MoES / IMD Aligned
+          </p>
         </div>
+
+        <footer className="simple-footer">
+          <p>WeatherGPT Platform • Ministry of Earth Sciences (MoES) / IMD Mission • Open-Meteo & WIS 2.0 Telemetry</p>
+        </footer>
       </main>
 
-      <footer className="chatbot-footer">
-        <p>Powered by OpenWeatherMap API • Built with React & shadcn/ui</p>
-      </footer>
+      <WeeklyForecastFooter days={weeklyDays} cityName={currentCity} activeIndex={3} />
+
+      <ChatDrawer
+        isOpen={chatDrawerOpen}
+        onClose={() => setChatDrawerOpen(false)}
+        selectedLang={selectedLang}
+        onLanguageChange={setSelectedLang}
+      />
+
+      <MobileChatToggle isOpen={mobileChatOpen} onClose={() => setMobileChatOpen(false)} />
     </div>
   );
 }

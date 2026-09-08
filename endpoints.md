@@ -1,6 +1,11 @@
 # WeatherGPT API Endpoints
 
-Base URL: `http://localhost:8080`
+## Base URLs
+
+| Service | Base URL | Description |
+|---------|----------|-------------|
+| Java Backend (Main API) | `http://localhost:8080` | Primary REST API |
+| Python Voice Service | `http://localhost:8001` | STT/TTS processing (optional) |
 
 All responses follow the envelope format:
 ```json
@@ -92,7 +97,7 @@ curl "http://localhost:8080/api/weather/forecast?location={{location}}&days=7"
 
 ### POST /api/chat/query
 
-Ask a natural-language weather question.
+Ask a natural-language weather question (text-only, JSON body).
 
 **Request Body:**
 ```json
@@ -116,7 +121,8 @@ curl -X POST "http://localhost:8080/api/chat/query" \
     "intent": "RAIN_QUERY",
     "timeReference": "TOMORROW",
     "location": { "name": "{{location}}", "latitude": 28.6519, "longitude": 77.2315 },
-    "advisories": ["Consider carrying an umbrella."]
+    "advisories": ["Consider carrying an umbrella."],
+    "voiceAnswer": "Yes. Rain is likely tomorrow in {{location}} with a 80% chance of precipitation. Consider carrying an umbrella."
   }
 }
 ```
@@ -139,6 +145,214 @@ curl -X POST "http://localhost:8080/api/chat/query" \
 **Note:** The `{{location}}` variable is a placeholder. Set it to any city the interpreter or geocoding provider can resolve (e.g. Delhi, Mumbai, Bengaluru, Chennai, Kolkata, New York, London, Tokyo).
 
 ---
+
+### POST /api/chat (multipart — voice queries)
+
+Ask a weather question using an audio recording. Accepts either JSON text or
+multipart/form-data with an optional audio file. When `message` is blank but
+`audio` is present, the backend attempts server-side speech-to-text before
+interpreting the query.
+
+**Request fields:**
+- `message` (optional) — transcribed text, if already available from client-side STT
+- `audio` (optional) — audio file (e.g. audio/wav, audio/mpeg)
+
+**Example (multipart, server-side STT must be wired):**
+```bash
+curl -X POST "http://localhost:8080/api/chat" \
+  -F "audio=@recording.wav" \
+  -F "message="
+```
+
+**Example (text via multipart):**
+```bash
+curl -X POST "http://localhost:8080/api/chat" \
+  -F "message=What is the weather in Delhi"
+```
+
+When server-side STT is not configured, the backend returns a clarification
+response asking the client to provide the text. The frontend uses the Web Speech
+API for client-side STT, so most voice interactions do not require server-side
+transcription.
+
+---
+
+### GET /api/chat/speak
+
+Synthesize spoken audio from text. Typically used with the `voiceAnswer` field
+from a chat response. Returns audio when server-side TTS is configured, or 503
+with a JSON error when it is not (clients can fall back to browser
+speechSynthesis).
+
+**Query parameters:**
+- `text` (required) — text to speak
+- `audioFormat` (optional) — requested MIME type, e.g. `audio/wav` or `audio/mpeg`
+
+**Example (server-side TTS must be wired):**
+```bash
+curl "http://localhost:8080/api/chat/speak?text=The%20weather%20in%20Delhi%20is%2032C&audioFormat=audio/wav" \
+  --output voice.wav
+```
+
+---
+
+## Python Voice Service (Optional)
+
+The Python voice service provides server-side speech-to-text and text-to-speech
+capabilities. It runs as a separate microservice and is called by the Java backend
+when voice processing is needed.
+
+**Base URL:** `http://localhost:8001`
+
+### GET /health
+
+Health check endpoint.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "voice_enabled": false,
+  "stt_available": false,
+  "tts_available": false
+}
+```
+
+### POST /stt/transcribe
+
+Transcribe audio to text using speech-to-text.
+
+**Request (multipart/form-data):**
+- `audio` (required) — Audio file (WAV, MP3, FLAC, Opus)
+- `content_type` (optional) — MIME type, default: `audio/wav`
+
+**Response (success):**
+```json
+{
+  "success": true,
+  "text": "What is the weather in Delhi?"
+}
+```
+
+**Response (no-op/disabled mode):**
+```json
+{
+  "success": false,
+  "error": "Server-side STT is not configured. Please provide text directly or enable voice service."
+}
+```
+
+**Example:**
+```bash
+curl -X POST "http://localhost:8001/stt/transcribe" \
+  -F "audio=@recording.wav" \
+  -F "content_type=audio/wav"
+```
+
+### POST /tts/synthesize
+
+Synthesize text to spoken audio (returns base64-encoded audio).
+
+**Query parameters:**
+- `text` (required) — text to speak
+- `audio_format` (optional) — audio format, default: `audio/wav`
+
+**Response (success):**
+```json
+{
+  "success": true,
+  "audio_base64": "<base64-encoded-audio>",
+  "mime_type": "audio/wav"
+}
+```
+
+**Response (no-op/disabled mode):**
+```json
+{
+  "success": false,
+  "error": "Server-side TTS is not configured. Use browser speechSynthesis instead."
+}
+```
+
+**Example:**
+```bash
+curl "http://localhost:8001/tts/synthesize?text=Hello&audio_format=audio/wav"
+```
+
+### GET /tts/speak
+
+Synthesize and return audio file directly (for download).
+
+**Query parameters:**
+- `text` (required) — text to speak
+- `audio_format` (optional) — audio format, default: `audio/wav`
+
+**Example:**
+```bash
+curl "http://localhost:8001/tts/speak?text=Hello&audio_format=audio/wav" \
+  --output voice.wav
+```
+
+---
+
+## Architecture Overview
+
+```
+┌─────────────────┐     ┌──────────────────┐
+│  React Frontend │────▶│ Java Spring Boot │
+│  (Web Speech)   │     │   Backend        │
+│  localhost:5173 │     │   localhost:8080 │
+└─────────────────┘     └────────┬─────────┘
+                                 │ (optional)
+                                 ▼
+                        ┌──────────────────┐
+                        │ Python Voice     │
+                        │ Service          │
+                        │   localhost:8001 │
+                        └────────┬─────────┘
+                                 │
+                    ┌────────────┴────────────┐
+                    │                         │
+              ┌─────▼─────┐           ┌──────▼──────┐
+              │  Whisper  │           │ gTTS /      │
+              │  (STT)    │           │ pyttsx3     │
+              │           │           │ (TTS)       │
+              └───────────┘           └─────────────┘
+```
+
+## Running Locally
+
+### Java Backend
+
+```bash
+cd backend
+./mvnw spring-boot:run
+# or
+./start.sh
+```
+
+### Python Voice Service (Optional)
+
+```bash
+cd voice_service
+pip install -r requirements.txt
+
+# Run in no-op mode (default)
+python main.py
+
+# Run with voice enabled
+VOICE_ENABLED=true python main.py
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+## Development
 
 ## Phase 3 — Extreme Weather Alerts
 

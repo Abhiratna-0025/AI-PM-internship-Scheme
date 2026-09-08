@@ -34,17 +34,23 @@ set -eu
 PROJECT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 BACKEND_DIR="$PROJECT_DIR/backend"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
+VOICE_DIR="$PROJECT_DIR/voice_service"
 
 BACKEND_PORT=8080
 FRONTEND_PORT=3000
+VOICE_PORT=8001
 OLLAMA_PORT=11434
 
 # NOTE: change the default here (or export OLLAMA_MODEL before running)
 # to match whichever model your WeatherGPT backend actually expects.
 OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.2}"
 
+# Voice service configuration
+VOICE_ENABLED="${VOICE_ENABLED:-false}"
+
 BACKEND_PID=""
 FRONTEND_PID=""
+VOICE_PID=""
 OLLAMA_PID=""
 
 # ------------------------------------------------------------
@@ -163,6 +169,10 @@ cleanup() {
         kill "$FRONTEND_PID" 2>/dev/null || true
     fi
 
+    if [ -n "$VOICE_PID" ]; then
+        kill "$VOICE_PID" 2>/dev/null || true
+    fi
+
     if [ -n "$OLLAMA_PID" ]; then
         kill "$OLLAMA_PID" 2>/dev/null || true
     fi
@@ -172,6 +182,65 @@ cleanup() {
 }
 
 trap cleanup INT TERM
+
+# ------------------------------------------------------------
+# Voice Service (Python)
+# ------------------------------------------------------------
+
+start_voice_service() {
+
+    if [ ! -d "$VOICE_DIR" ]; then
+        warn "Voice service directory not found: $VOICE_DIR"
+        warn "Skipping voice service startup."
+        return
+    fi
+
+    if [ ! -f "$VOICE_DIR/main.py" ]; then
+        warn "Voice service main.py not found in $VOICE_DIR"
+        warn "Skipping voice service startup."
+        return
+    fi
+
+    if port_in_use "$VOICE_PORT"; then
+        warn "Port $VOICE_PORT is already in use."
+        warn "Voice service may already be running."
+        info "Voice Service: http://localhost:$VOICE_PORT"
+        return
+    fi
+
+    info "Starting WeatherGPT Voice Service (Python)..."
+
+    (
+        cd "$VOICE_DIR"
+        VOICE_ENABLED="$VOICE_ENABLED" python3 main.py
+    ) &
+
+    VOICE_PID=$!
+
+    info "Waiting for voice service on port $VOICE_PORT..."
+
+    COUNT=0
+
+    while [ "$COUNT" -lt 30 ]; do
+
+        if port_in_use "$VOICE_PORT"; then
+            success "Voice Service started!"
+            success "Voice Service: http://localhost:$VOICE_PORT"
+            return
+        fi
+
+        if ! kill -0 "$VOICE_PID" 2>/dev/null; then
+            warn "Voice service process stopped unexpectedly."
+            return
+        fi
+
+        sleep 1
+        COUNT=$((COUNT + 1))
+    done
+
+    warn "Voice service did not start within 30 seconds."
+    warn "Continuing without voice service - frontend will use browser Web Speech API."
+}
 
 # ------------------------------------------------------------
 # Ollama
@@ -469,6 +538,7 @@ stop_services() {
 
     stop_port "$BACKEND_PORT"
     stop_port "$FRONTEND_PORT"
+    stop_port "$VOICE_PORT"
 
     success "WeatherGPT services stopped."
 }
@@ -490,14 +560,22 @@ case "$COMMAND" in
 
         pull_ollama_model
         start_backend
+        start_voice_service
         start_frontend
 
         printf "\n"
         success "WeatherGPT is running!"
         printf "\n"
 
-        printf "Backend:\n"
+        printf "Backend (Java/Spring Boot):\n"
         printf "  http://localhost:%s\n\n" "$BACKEND_PORT"
+
+        if port_in_use "$VOICE_PORT"; then
+            printf "Voice Service (Python/FastAPI):\n"
+            printf "  http://localhost:%s\n\n" "$VOICE_PORT"
+        else
+            printf "Voice Service: Disabled (using browser Web Speech API)\n\n"
+        fi
 
         printf "Frontend (React + Vite):\n"
         printf "  http://localhost:%s\n\n" "$FRONTEND_PORT"
@@ -518,6 +596,10 @@ case "$COMMAND" in
                 error "Frontend process stopped."
                 cleanup
             fi
+
+            if [ -n "$VOICE_PID" ] && ! kill -0 "$VOICE_PID" 2>/dev/null; then
+                warn "Voice service process stopped."
+            fi
         done
         ;;
 
@@ -535,6 +617,14 @@ case "$COMMAND" in
 
         if [ -n "$FRONTEND_PID" ]; then
             wait "$FRONTEND_PID"
+        fi
+        ;;
+
+    voice)
+        start_voice_service
+
+        if [ -n "$VOICE_PID" ]; then
+            wait "$VOICE_PID"
         fi
         ;;
 
@@ -562,6 +652,7 @@ case "$COMMAND" in
         printf "  ./start.sh\n"
         printf "  ./start.sh backend\n"
         printf "  ./start.sh frontend\n"
+        printf "  ./start.sh voice\n"
         printf "  ./start.sh setup\n"
         printf "  ./start.sh test\n"
         printf "  ./start.sh build\n"

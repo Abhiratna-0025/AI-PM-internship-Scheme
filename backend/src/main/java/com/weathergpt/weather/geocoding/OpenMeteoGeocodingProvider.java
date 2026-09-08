@@ -62,6 +62,12 @@ public class OpenMeteoGeocodingProvider implements GeocodingProvider {
         }
     }
 
+    @Override
+    public Optional<GeoLocation> reverseResolve(double latitude, double longitude) {
+        log.warn("Open-Meteo reverse geocoding is not supported; no API endpoint for lat/lon lookup.");
+        return Optional.empty();
+    }
+
     private static String encode(String query) {
         return URLEncoder.encode(query, StandardCharsets.UTF_8);
     }

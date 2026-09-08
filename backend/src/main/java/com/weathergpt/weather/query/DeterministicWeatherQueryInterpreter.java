@@ -22,23 +22,29 @@ public class DeterministicWeatherQueryInterpreter implements WeatherQueryInterpr
             "weather", "rain", "raining", "rainy", "umbrella", "precipitation", "shower", "drizzle",
             "hot", "cold", "warm", "cool", "temperature", "degrees", "wind", "windy", "breeze", "gust",
             "blowing", "humid", "humidity", "muggy", "sticky", "moist", "sunny", "cloudy", "overcast",
-            "fog", "foggy", "forecast", "storm", "thunder", "snow", "clear", "chilly", "freezing"
+            "fog", "foggy", "forecast", "storm", "thunder", "snow", "clear", "chilly", "freezing",
+            "मौसम", "बारिश", "तापमान", "हवा", "மழை", "வானிலை", "వర్షం", "వాతావరణం", "আবহাওয়া", "বৃষ্টি", "हवामान", "पाऊस",
+            "barish", "mausam", "tapman", "varsham", "bristi", "hawa"
     );
 
     private static final Set<String> RAIN_KEYWORDS = Set.of(
-            "rain", "raining", "rainy", "umbrella", "precipitation", "shower", "drizzle", "downpour"
+            "rain", "raining", "rainy", "umbrella", "precipitation", "shower", "drizzle", "downpour",
+            "बारिश", "बरसात", "மழை", "వర్షం", "বৃষ্টি", "पाऊस", "વરસાદ", "barish", "barsat", "varsham", "bristi"
     );
 
     private static final Set<String> TEMPERATURE_KEYWORDS = Set.of(
-            "hot", "cold", "warm", "cool", "temperature", "degrees", "heat", "chilly", "freezing"
+            "hot", "cold", "warm", "cool", "temperature", "degrees", "heat", "chilly", "freezing",
+            "तापमान", "गर्मी", "ठंड", "வெப்பநிலை", "ఉష్ణోగ్రత", "তাপমাত্রা", "tapman", "garmi"
     );
 
     private static final Set<String> WIND_KEYWORDS = Set.of(
-            "wind", "windy", "breeze", "gust", "blowing"
+            "wind", "windy", "breeze", "gust", "blowing",
+            "हवा", "காற்று", "గాలి", "বাতাস", "વાવાઝોડું", "hava"
     );
 
     private static final Set<String> HUMIDITY_KEYWORDS = Set.of(
-            "humid", "humidity", "muggy", "sticky", "moist"
+            "humid", "humidity", "muggy", "sticky", "moist",
+            "नमी", "आर्द्रता", "ஈரப்பதம்", "తేమ", "nami"
     );
 
     private static final Pattern HISTORICAL_TIME = Pattern.compile(
@@ -211,6 +217,26 @@ public class DeterministicWeatherQueryInterpreter implements WeatherQueryInterpr
         cities.put("cochin", "Kochi");
         cities.put("goa", "Goa");
         cities.put("shimla", "Shimla");
+        // Indian Scripts
+        cities.put("दिल्ली", "Delhi");
+        cities.put("मुंबई", "Mumbai");
+        cities.put("चेन्नई", "Chennai");
+        cities.put("कोलकाता", "Kolkata");
+        cities.put("बेंगलुरु", "Bengaluru");
+        cities.put("बैंगलोर", "Bengaluru");
+        cities.put("हैदराबाद", "Hyderabad");
+        cities.put("पुणे", "Pune");
+        cities.put("अहमदाबाद", "Ahmedabad");
+        cities.put("जयपुर", "Jaipur");
+        cities.put("लखनऊ", "Lucknow");
+        cities.put("சென்னை", "Chennai");
+        cities.put("மும்பை", "Mumbai");
+        cities.put("டெல்லி", "Delhi");
+        cities.put("బెంగళూరు", "Bengaluru");
+        cities.put("హైదరాబాద్", "Hyderabad");
+        cities.put("కోల్‌కతా", "Kolkata");
+        cities.put("কলকাতা", "Kolkata");
+        cities.put("দিল্লি", "Delhi");
         // World
         cities.put("new york", "New York");
         cities.put("nyc", "New York");

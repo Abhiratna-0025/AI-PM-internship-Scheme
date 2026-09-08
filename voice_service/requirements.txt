@@ -1,0 +1,23 @@
+# WeatherGPT Voice Service Dependencies
+
+# FastAPI web framework
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+
+# Speech-to-Text (Whisper - local, offline)
+# pip install openai-whisper
+openai-whisper>=20231117
+
+# Text-to-Speech options (choose one or both)
+
+# gTTS - Google Text-to-Speech (requires internet)
+gTTS>=2.3.0
+
+# pyttsx3 - Offline TTS using system voices
+pyttsx3>=2.90
+
+# Optional: for additional audio processing
+# pydub>=0.25.0
+
+# Development
+python-dotenv>=1.0.0

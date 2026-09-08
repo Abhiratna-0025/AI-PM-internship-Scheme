@@ -63,6 +63,7 @@ public class SecurityConfig {
                     "/api/weather/**",
                     "/api/chat/**",
                     "/api/alerts/**",
+                    "/api/ingest/**",
                     "/swagger-ui/**",
                     "/swagger-ui.html",
                     "/v3/api-docs/**",
@@ -71,6 +72,7 @@ public class SecurityConfig {
                 // Admin-only endpoints
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 // All other endpoints require authentication
+                .requestMatchers("/h2-console/**").permitAll()
                 .anyRequest().authenticated()
             )
             // Security headers: HSTS, Content-Security-Policy, Referrer-Policy, Permissions-Policy
@@ -93,9 +95,6 @@ public class SecurityConfig {
 
         // Conditionally allow H2 console (for development only)
         if (h2ConsoleEnabled) {
-            http.authorizeHttpRequests(auth -> auth
-                .requestMatchers("/h2-console/**").permitAll()
-            );
             http.headers(headers -> headers
                 .frameOptions(frame -> frame.disable()) // Required for H2 console
             );
@@ -109,19 +108,24 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        //configuration.setAllowedOrigins(List.of("http://localhost:3000", "http://localhost:5173"));
         configuration.setAllowedOrigins(List.of(
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://localhost:3002",
-    "http://localhost:3003",
-    "http://localhost:3004",
-    "http://localhost:5173",
-    "http://127.0.0.1:5500",
-    "http://localhost:5500"
-));
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://localhost:3002",
+            "http://localhost:3003",
+            "http://localhost:3004",
+            "http://localhost:5173",
+            "http://127.0.0.1:5500",
+            "http://localhost:5500"
+        ));
+        configuration.setAllowedOriginPatterns(List.of(
+            "http://192.168.0.*",
+            "http://192.168.1.*",
+            "http://10.*.*.*",
+            "http://172.16.*.*",
+            "http://localhost:*"
+        ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-        // Lock down CORS: whitelist specific headers instead of allowing all
         configuration.setAllowedHeaders(List.of(
             "Authorization",
             "Content-Type",
