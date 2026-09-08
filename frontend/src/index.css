@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
-
 @import "tailwindcss";
 
 @theme {
@@ -70,4 +68,97 @@
     background-color: rgba(56, 189, 248, 0.3);
     color: white;
   }
+}
+
+:root {
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --default-transition-duration: 150ms;
+  --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  --default-font-family: var(--font-sans);
+  --default-mono-font-family: var(--font-mono);
+  --color-background: oklch(0.145 0 0);
+  --color-foreground: oklch(0.985 0 0);
+  --color-border: oklch(0.25 0 0);
+  -webkit-text-size-adjust: 100%;
+  tab-size: 4;
+  font-variation-settings: var(--default-font-variation-settings, normal);
+  -webkit-tap-highlight-color: transparent;
+  --bg-primary: #070d14;
+  --bg-card-hover: rgba(28, 42, 65, 0.85);
+  --border-card: rgba(56, 189, 248, 0.2);
+  --green-bright: #10b981;
+  --orange-bright: #f59e0b;
+  --red-bright: #ef4444;
+  --cdr-bg-primary: #070d14;
+  --cdr-bg-card: rgba(18, 28, 44, 0.75);
+  --cdr-bg-dark: rgba(11, 19, 34, 0.95);
+  --cdr-border: rgba(56, 189, 248, 0.2);
+  --cdr-accent-cyan: #38bdf8;
+  --cdr-accent-cyan-bright: #00e5ff;
+  --cdr-text-primary: #f8fafc;
+  --cdr-text-secondary: #94a3b8;
+  --cdr-text-muted: #64748b;
+  --cdr-green: #10b981;
+  --bg-main: #050b12;
+  --bg-card: rgba(12, 22, 36, 0.45);
+  --bg-widget: #BDC3C7;
+  --bg-widget-dark: #D5DBDB;
+  --glass-bg: rgba(10, 22, 36, 0.42);
+  --glass-bg-strong: rgba(8, 18, 32, 0.58);
+  --glass-highlight: rgba(255, 255, 255, 0.14);
+  --glass-border: rgba(0, 229, 255, 0.22);
+  --glass-border-soft: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 12px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --glass-blur: blur(22px) saturate(170%);
+  --accent-cyan: #38bdf8;
+  --accent-cyan-dim: rgba(56, 189, 248, 0.18);
+  --accent-cyan-bright: #00e5ff;
+  --accent-blue: #0078ff;
+  --accent-amber: #FBBF24;
+  --accent-amber-dim: rgba(251, 191, 36, 0.3);
+  --text-primary: #ffffff;
+  --text-secondary: #b8c2d2;
+  --text-muted: #8a99ad;
+  --text-dark: #1a1a2e;
+  --border-default: rgba(0, 229, 255, 0.16);
+  --sidebar-gutter: 24px;
+  --sidebar-width: 64px;
+  --content-offset: calc(var(--sidebar-gutter) * 2 + var(--sidebar-width));
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+  --font-sans: "Plus Jakarta Sans", "Geist", system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --resize-dur: 300ms;
+  --resize-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --icon-swap-dur: 250ms;
+  --icon-swap-blur: 2px;
+  --icon-swap-start-scale: 0.25;
+  --icon-swap-ease: ease-in-out;
+  --matrix-cycle: 1200ms;
+  --matrix-base: #3a3a3e;
+  --matrix-active: #b8b8c2;
+  --matrix-ease: ease-in-out;
+  --clear-dur: 1000ms;
+  --clear-out-dur: 400ms;
+  --clear-in-dur: 400ms;
+  --clear-out-fly: 12px;
+  --clear-in-fly: 12px;
+  --clear-out-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --clear-in-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --clear-blur: 2px;
+  --glow-delay: 50ms;
+  --glow-peak-at: 0.15;
+  --glow-opacity: 0.85;
+  --glow-spread: 1.5;
+  font-feature-settings: "rlig" 1, "calt" 1;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  box-sizing: border-box;
+  margin: 0;
 }

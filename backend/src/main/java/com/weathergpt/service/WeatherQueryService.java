@@ -48,6 +48,8 @@ public class WeatherQueryService {
     private final WeatherService weatherService;
     private final WeatherResponseGenerator responseGenerator;
     private final SpeechToTextService speechToTextService;
+    private final LlmQueryUnderstandingService llmQueryUnderstandingService;
+    private final LocalizationService localizationService;
 
     /**
      * Process a text-based query (existing behavior).
@@ -92,6 +94,14 @@ public class WeatherQueryService {
             }
         }
 
+        // Check if this is a specialized query (sector advisory, NWP models, climate, alerts)
+        if (llmQueryUnderstandingService != null && llmQueryUnderstandingService.canHandleSpecialized(request, null)) {
+            ChatResponse specialized = llmQueryUnderstandingService.processSpecializedQuery(request, null);
+            if (specialized != null) {
+                return specialized;
+            }
+        }
+
         ParsedWeatherQuery parsed = interpreter.interpret(message);
 
         if (parsed.getIntent() == WeatherIntent.UNSUPPORTED) {
@@ -122,7 +132,23 @@ public class WeatherQueryService {
         }
 
         GeoLocation location = weatherService.resolveLocation(parsed.getLocationQuery());
-        return buildDataResponse(parsed, location);
+        ChatResponse resp = buildDataResponse(parsed, location);
+
+        // Apply localization if requested language is not English
+        String targetLang = localizationService.detectLanguage(message, request.getLanguage());
+        if (targetLang != null && !targetLang.equalsIgnoreCase("en") && resp != null && resp.getCurrentWeather() != null) {
+            var curr = resp.getCurrentWeather();
+            String localizedAnswer = localizationService.formatCurrentWeather(
+                    location.getName(), curr.getTemperature(), curr.getApparentTemperature(),
+                    curr.getHumidity(), curr.getWindSpeed(), curr.getWeatherDescription(), targetLang);
+            resp.setAnswer(localizedAnswer);
+            resp.setVoiceAnswer(localizedAnswer);
+            resp.setLanguage(targetLang);
+        } else if (resp != null) {
+            resp.setLanguage("en");
+        }
+
+        return resp;
     }
 
     private ChatResponse buildDataResponse(ParsedWeatherQuery parsed, GeoLocation location) {

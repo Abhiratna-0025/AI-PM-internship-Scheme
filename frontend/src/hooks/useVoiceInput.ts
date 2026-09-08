@@ -7,6 +7,7 @@ interface UseVoiceInputOptions {
   onError?: (error: string) => void;
   continuous?: boolean;
   interim?: boolean;
+  lang?: string;
 }
 
 interface UseVoiceInputReturn {
@@ -33,6 +34,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     onError,
     continuous = true,
     interim = true,
+    lang = 'en-IN',
   } = options;
 
   const [status, setStatus] = useState<VoiceStatus>('idle');
@@ -43,6 +45,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
   const onErrorRef = useRef(onError);
   const interimRef = useRef(interim);
   const continuousRef = useRef(continuous);
+  const langRef = useRef(lang);
   const accumulatedFinalRef = useRef('');
   const isSpeakingRef = useRef(false);
 
@@ -52,7 +55,11 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     onErrorRef.current = onError;
     interimRef.current = interim;
     continuousRef.current = continuous;
-  }, [onTranscript, onError, interim, continuous]);
+    langRef.current = lang;
+    if (recognitionRef.current && recognitionRef.current.lang !== lang) {
+      recognitionRef.current.lang = lang;
+    }
+  }, [onTranscript, onError, interim, continuous, lang]);
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -65,7 +72,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     const recognition = new SpeechRecognition();
     recognition.continuous = continuousRef.current;
     recognition.interimResults = interimRef.current;
-    recognition.lang = 'en-IN';
+    recognition.lang = langRef.current || 'en-IN';
     recognition.maxAlternatives = 1;
 
     recognition.onresult = (event: any) => {

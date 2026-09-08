@@ -177,7 +177,7 @@ class TextToSpeechService:
             logger.error(f"Failed to initialize TTS engine: {e}")
             self._engine = None
 
-    def synthesize(self, text: str, audio_format: Optional[str] = None) -> Optional[dict]:
+    def synthesize(self, text: str, audio_format: Optional[str] = None, lang: Optional[str] = "en") -> Optional[dict]:
         """
         Synthesize text to speech audio.
         
@@ -185,6 +185,7 @@ class TextToSpeechService:
             text: Text to speak
             audio_format: Desired audio format (e.g., "audio/wav", "audio/mpeg")
                           If None, uses default format
+            lang: Language code (e.g., "en", "hi", "ta", "te", "bn", "mr", "gu")
         
         Returns:
             Dict with 'audio' (bytes) and 'mime_type' (str), or None if synthesis fails
@@ -200,9 +201,11 @@ class TextToSpeechService:
         if audio_format is None:
             audio_format = DEFAULT_TTS_FORMAT
 
+        safe_lang = lang if lang in ["en", "hi", "ta", "te", "bn", "mr", "gu", "kn", "ml", "pa"] else "en"
+
         try:
             if self._engine == "gtts":
-                return self._synthesize_gtts(text, audio_format)
+                return self._synthesize_gtts(text, audio_format, safe_lang)
             elif isinstance(self._engine, object):  # pyttsx3
                 return self._synthesize_pyttsx3(text, audio_format)
             else:
@@ -213,14 +216,13 @@ class TextToSpeechService:
             logger.error(f"TTS synthesis failed: {e}")
             return None
 
-    def _synthesize_gtts(self, text: str, audio_format: str) -> Optional[dict]:
+    def _synthesize_gtts(self, text: str, audio_format: str, lang: str = "en") -> Optional[dict]:
         """Synthesize using gTTS (Google Text-to-Speech)."""
         from gtts import gTTS
         import io
 
         try:
-            # gTTS supports mp3 output
-            tts = gTTS(text=text, lang='en', slow=False)
+            tts = gTTS(text=text, lang=lang, slow=False)
             
             audio_buffer = io.BytesIO()
             tts.write_to_fp(audio_buffer)
@@ -228,7 +230,7 @@ class TextToSpeechService:
             
             mime_type = "audio/mpeg" if audio_format.endswith("mp3") else "audio/ogg"
             
-            logger.info(f"gTTS synthesized {len(audio_bytes)} bytes of audio")
+            logger.info(f"gTTS synthesized {len(audio_bytes)} bytes of audio (lang={lang})")
             return {"audio": audio_bytes, "mime_type": mime_type}
 
         except Exception as e:
@@ -331,13 +333,15 @@ async def transcribe_audio(
 @app.post("/tts/synthesize", response_model=TTSResponse)
 async def synthesize_speech(
     text: str,
-    audio_format: str = Query(default="audio/wav", description="Desired audio format (audio/wav, audio/mpeg)")
+    audio_format: str = Query(default="audio/wav", description="Desired audio format (audio/wav, audio/mpeg)"),
+    lang: str = Query(default="en", description="Language code (en, hi, ta, te, bn, mr, gu)")
 ):
     """
     Synthesize text to spoken audio using text-to-speech.
     
     - **text**: Text to speak
     - **audio_format**: Desired audio format (audio/wav or audio/mpeg)
+    - **lang**: Language code for multilingual synthesis
     
     Returns base64-encoded audio, or an error if synthesis fails.
     
@@ -349,7 +353,7 @@ async def synthesize_speech(
             error="Server-side TTS is not configured. Use browser speechSynthesis instead."
         )
 
-    result = tts_service.synthesize(text, audio_format)
+    result = tts_service.synthesize(text, audio_format, lang)
     
     if result:
         import base64
@@ -368,7 +372,8 @@ async def synthesize_speech(
 @app.get("/tts/speak")
 async def speak(
     text: str = Query(..., description="Text to speak"),
-    audio_format: str = Query(default="audio/wav", description="Audio format")
+    audio_format: str = Query(default="audio/wav", description="Audio format"),
+    lang: str = Query(default="en", description="Language code (en, hi, ta, te, bn, mr, gu)")
 ):
     """
     Synthesize and return audio file directly (for direct download).

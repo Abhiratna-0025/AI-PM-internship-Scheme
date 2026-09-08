@@ -633,7 +633,9 @@ switch ($Command) {
 
     "stop" {
         Stop-Services
-    }default {
+    }
+
+    default {
         Write-ErrorMsg "Unknown command: $Command"
 
         Write-Host ""
