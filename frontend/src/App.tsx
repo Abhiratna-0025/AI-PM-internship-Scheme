@@ -315,7 +315,6 @@ export default function App() {
       <div className="glass-orb glass-orb-1" aria-hidden="true" />
         <div className="glass-orb glass-orb-2" aria-hidden="true" />
         <div className="glass-orb glass-orb-3" aria-hidden="true" />
-      </aside>
       {/* Sidebar */}
       <aside className="sidebar">
         {/* Branding Logo — Breeze icon from Figma */}
@@ -331,8 +330,6 @@ export default function App() {
             <path d="M10 21.5C12 20.5 14 20.5 16 21.5C18 22.5 20 22.5 22 21.5" stroke="white" strokeOpacity="0.9" strokeWidth="2.2" strokeLinecap="round"/>
           </svg>
         </button>
-
-      </aside>
 
       <nav className="sidebar-nav">
           <button
