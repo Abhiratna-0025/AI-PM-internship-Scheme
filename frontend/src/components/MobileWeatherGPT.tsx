@@ -52,6 +52,9 @@ export default function MobileWeatherGPT() {
 
   // Location
   const [currentCity, setCurrentCity] = useState("Delhi");
+  const [gpsCoords, setGpsCoords] = useState<{ latitude: number; longitude: number; accuracy: number } | null>(null);
+  const [gpsWatching, setGpsWatching] = useState(false);
+  const [gpsWatchId, setGpsWatchId] = useState<number | null>(null);
 
   // Chat
   const [input, setInput] = useState("");
@@ -334,102 +337,140 @@ export default function MobileWeatherGPT() {
 
   /*
    * Use browser GPS location.
+   * Starts a real-time watch so the displayed location stays
+   * current as the device moves; precise fix requested via
+   * enableHighAccuracy + maximumAge === 0.
+   *
+   * Each fresh fix also immediately refreshes the advisory
+   * data for the Agriculture, Smart City and Marine sectors.
    */
-  const handleUseMyLocation = useCallback(() => {
+  const handleUseMyLocation = useCallback(async () => {
     if (!navigator.geolocation) {
       window.alert("Geolocation is not supported by your browser.");
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
+    // Toggle off an active watch
+    if (gpsWatchId !== null) {
+      navigator.geolocation.clearWatch(gpsWatchId);
+      setGpsWatching(false);
+      setGpsWatchId(null);
+      setGpsCoords(null);
+      return;
+    }
 
-        const locationText = `${latitude.toFixed(
-          2
-        )}, ${longitude.toFixed(2)}`;
+    /*
+     * One shot — fetch advisories once we have the first
+     * precise fix from the watch below.
+     */
+    const loadAdvisoriesForLocation = useCallback(async (latitude: number, longitude: number) => {
+      setIsLoading(true);
 
-        setCurrentCity(locationText);
+      const userMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: "user",
+        content: `📍 My GPS location: ${latitude.toFixed(2)}, ${longitude.toFixed(2)}`,
+        timestamp: new Date(),
+      };
 
-        const userMessage: ChatMessage = {
-          id: Date.now().toString(),
-          role: "user",
-          content: `📍 My GPS location: ${locationText}`,
-          timestamp: new Date(),
-        };
+      setMessages((previous) => [...previous, userMessage]);
 
-        setMessages((previous) => [...previous, userMessage]);
-        setIsLoading(true);
+      try {
+        const response = await fetchJson<any>(
+          `${API_BASE_URL}/api/weather/advisories?latitude=${latitude}&longitude=${longitude}&sector=all`
+        );
 
-        try {
-          const response = await fetchJson<any>(
-            `${API_BASE_URL}/api/weather/advisories?latitude=${latitude}&longitude=${longitude}&sector=all`
-          );
+        if (response.success && response.data) {
+          setSectorData(response.data);
 
-          if (response.success && response.data) {
-            setSectorData(response.data);
+          const agriculture = response.data.agriculture ?? {};
+          const marine = response.data.marine ?? {};
 
-            const agriculture =
-              response.data.agriculture ?? {};
+          const botMessage: ChatMessage = {
+            id: `${Date.now()}-bot`,
+            role: "bot",
+            content:
+              `📍 **Field Location Coordinates: ${latitude.toFixed(2)}°N, ${longitude.toFixed(2)}°E**\n\n` +
+              `Hyper-local advisories retrieved for Agriculture, Smart City, and Severe Weather.\n\n` +
+              `• Sowing Advisory: ${agriculture.sowingAdvisory ?? "Normal"}\n` +
+              `• Irrigation: ${agriculture.irrigationRecommendation ?? "Adequate"}` +
+              `• Marine/Fisheries: ${marine.fishermenAction ?? "Safe"}`,
+            timestamp: new Date(),
+          };
 
-            const marine = response.data.marine ?? {};
-
-            const botMessage: ChatMessage = {
-              id: `${Date.now()}-bot`,
-              role: "bot",
-              content:
-                `📍 **Field Location Coordinates: ${latitude.toFixed(
-                  2
-                )}°N, ${longitude.toFixed(
-                  2
-                )}°E**\n\n` +
-                `Hyper-local advisories retrieved for Agriculture, Smart City, and Severe Weather.\n\n` +
-                `• Sowing Advisory: ${
-                  agriculture.sowingAdvisory ?? "Normal"
-                }\n` +
-                `\n• Irrigation: ${
-                  agriculture.irrigationRecommendation ?? "Adequate"
-                }` +
-                `\n• Marine/Fisheries: ${
-                  marine.fishermenAction ?? "Safe"
-                }`,
-              timestamp: new Date(),
-            };
-
-            setMessages((previous) => [
-              ...previous,
-              botMessage,
-            ]);
-          }
-        } catch (error) {
-          console.error("GPS advisory request failed:", error);
-
-          setMessages((previous) => [
-            ...previous,
-            {
-              id: `${Date.now()}-error`,
-              role: "bot",
-              content:
-                "⚠️ Unable to retrieve hyper-local weather advisories.",
-              timestamp: new Date(),
-            },
-          ]);
-        } finally {
-          setIsLoading(false);
+          setMessages((previous) => [...previous, botMessage]);
         }
+      } catch (error) {
+        console.error("GPS advisory request failed:", error);
+
+        setMessages((previous) => [
+          ...previous,
+          {
+            id: `${Date.now()}-error`,
+            role: "bot",
+            content:
+              "⚠️ Unable to retrieve hyper-local weather advisories.",
+            timestamp: new Date(),
+          },
+        ]);
+      } finally {
+        setIsLoading(false);
+      }
+    }, [fetchJson]);
+
+    const watchOptions: PositionOptions = {
+      enableHighAccuracy: true, // request GPS / precise fix
+      timeout: 8000,
+      maximumAge: 0, // never use a cached position — always get a fresh fix
+    };
+
+    const watchId = navigator.geolocation.watchPosition(
+      async (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+
+        setCurrentCity(`${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+        setGpsCoords({ latitude, longitude, accuracy: accuracy ?? 0 });
+        setGpsWatching(true);
+
+        console.info(
+          `GPS fix: ${latitude.toFixed(5)}, ${longitude.toFixed(5)} | accuracy: ${Math.round(accuracy ?? 0)}m`
+        );
+
+        // Fetch advisories on the first good fix only (don't spam the backend while the user stands still).
+        await loadAdvisoriesForLocation(latitude, longitude);
       },
       (error) => {
-        window.alert(
-          `Location access denied or unavailable: ${error.message}`
-        );
+        if (error.code === error.PERMISSION_DENIED) {
+          window.alert(
+            `Location access denied. Please enable location for this site (and turn on \"Use precise location\" in your browser prompt), then try again.`
+          );
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          console.warn("GPS signal unavailable:", error.message);
+        } else if (error.code === error.TIMEOUT) {
+          console.warn("GPS fix timed out:", error.message);
+        } else {
+          console.error("GPS watch error:", error);
+        }
+        // Keep watching — real devices often recover from temporary unavailability
       },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 60000,
-      }
+      watchOptions
     );
-  }, [fetchJson]);
+
+    setGpsWatchId(watchId);
+    setGpsWatching(true);
+  }, [gpsWatchId, loadAdvisoriesForLocation]);
+
+  /*
+   * Tear down the GPS watch whenever the component unmounts
+   * so we stop consuming battery and geolocation resources.
+   */
+  useEffect(() => {
+    return () => {
+      if (gpsWatchId !== null) {
+        navigator.geolocation.clearWatch(gpsWatchId);
+      }
+    };
+  }, [gpsWatchId]);
 
   /*
    * Send chat query.
@@ -756,7 +797,15 @@ export default function MobileWeatherGPT() {
             title="Use My Location"
             aria-label="Use my location"
           >
-            <MapPin size={16} />
+            {gpsWatching && gpsCoords ? (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ color: gpsCoords.accuracy <= 50 ? '#10b981' : '#f59e0b' }}>●</span>
+                <MapPin size={14} />
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>GPS {Math.round(gpsCoords.accuracy)}m</span>
+              </span>
+            ) : (
+              <MapPin size={16} />
+            )}
           </button>
         </div>
       </header>
