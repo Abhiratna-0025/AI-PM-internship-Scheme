@@ -92,8 +92,15 @@ export default function App() {
 
   const { speak, stop: stopSpeech, isSpeaking } = useVoiceOutput();
 
+  // Keep the chat scrolled to the latest message whenever the message list grows.
+  // On the very first render we must NOT call scrollIntoView: the decorative glass
+  // orbs create 90px of scrollable overflow on `.simple-weathergpt`, and an initial
+  // scrollIntoView would scroll the whole root up by 90px and push the header above
+  // the viewport (header viewport rect becomes top: -70px).
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messages.length > 1 || isLoading) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages, isLoading]);
 
   // Fetch initial meteorological data — consolidated to avoid duplicate advisories calls
