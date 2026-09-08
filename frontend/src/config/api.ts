@@ -9,11 +9,8 @@
  *   - Uses relative /api paths so Vercel can proxy them to Railway
  */
 
-const getApiBaseUrl = (): string => {
-  return "https://sih-weathergpt-production.up.railway.app";
-};
 
-export const API_BASE_URL = getApiBaseUrl();
+export const API_BASE_URL = "https://sih-weathergpt-production.up.railway.app";
 
 // In-flight request deduplication cache: key → promise
 const inFlightRequests = new Map<string, Promise<Response>>();
@@ -21,7 +18,7 @@ const inFlightRequests = new Map<string, Promise<Response>>();
 export async function fetchWithDedup(
   url: string,
   options?: RequestInit
-): Promise<Response> {d
+): Promise<Response> {
   const key = `${options?.method || 'GET'}:${url}`;
 
   const existing = inFlightRequests.get(key);
