@@ -21,7 +21,6 @@ import './App.css';
 import ChatDrawer from './components/ChatDrawer';
 import MobileChatToggle from './components/MobileChatToggle';
 import MobileWeatherGPT from './components/MobileWeatherGPT';
-import WeeklyForecastFooter, { placeholderWeeklyDays, toWeeklyDays } from './components/WeeklyForecastFooter';
 import { ADVISORIES_ENDPOINT, ALERTS_ENDPOINT, CHAT_ENDPOINT, CLIMATE_ENDPOINT, WEATHER_ENDPOINTS } from './config/api';
 import { useVoiceInput } from './hooks/useVoiceInput';
 import { useVoiceOutput } from './hooks/useVoiceOutput';
@@ -46,6 +45,9 @@ export default function App() {
   const [activeNav, setActiveNav] = useState<'weather' | 'forecast' | 'nwp' | 'sectors' | 'alerts' | 'climate'>('weather');
   const [selectedLang, setSelectedLang] = useState('en');
   const [currentCity, setCurrentCity] = useState('Delhi');
+  const [gpsCoords, setGpsCoords] = useState<{ latitude: number; longitude: number; accuracy: number } | null>(null);
+  const [gpsWatching, setGpsWatching] = useState(false);
+  const [gpsWatchId, setGpsWatchId] = useState<number | null>(null);
   
   const [messages, setMessages] = useState<{ id: string; role: MessageRole; content: string; voiceAnswer?: string }[]>([
     {
@@ -211,19 +213,62 @@ export default function App() {
     }
   };
 
-  const handleUseMyLocation = () => {
+  const handleUseMyLocation = useCallback(() => {
     if (!navigator.geolocation) {
       alert("Geolocation is not supported by your browser");
       return;
     }
-    navigator.geolocation.getCurrentPosition(
+    // Stop any existing watch first
+    if (gpsWatchId !== null) {
+      navigator.geolocation.clearWatch(gpsWatchId);
+      setGpsWatching(false);
+      setGpsWatchId(null);
+      return;
+    }
+    const watchOptions: PositionOptions = {
+      enableHighAccuracy: true, // request GPS / precise fix
+      timeout: 8000,
+      maximumAge: 0, // never use a cached position — always get a fresh fix
+    };
+    const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setCurrentCity(`${latitude.toFixed(2)}, ${longitude.toFixed(2)}`);
+        const { latitude, longitude, accuracy, altitudeAccuracy } = pos.coords;
+        const precise = accuracy !== null && accuracy <= 50;
+        setCurrentCity(`${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+        setGpsCoords({ latitude, longitude, accuracy: accuracy ?? 0 });
+        setGpsWatching(true);
+        console.info(
+          `GPS fix: ${latitude.toFixed(5)}, ${longitude.toFixed(5)} | accuracy: ${Math.round(accuracy)}m | precise: ${precise}`
+        );
       },
-      (err) => alert("Location access error: " + err.message)
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          alert(
+            "Location access denied. Please enable location for this site (and turn on 'Use precise location' in your browser prompt), then try again."
+          );
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          console.warn("GPS signal unavailable:", err.message);
+        } else if (err.code === err.TIMEOUT) {
+          console.warn("GPS fix timed out:", err.message);
+        } else {
+          console.error("GPS watch error:", err);
+        }
+        // Keep watching — real devices often recover from temporary unavailability
+      },
+      watchOptions
     );
-  };
+    setGpsWatchId(watchId);
+    setGpsWatching(true);
+  }, [gpsWatchId]);
+
+  // Tear down GPS watch when component unmounts or user cancels
+  useEffect(() => {
+    return () => {
+      if (gpsWatchId !== null) {
+        navigator.geolocation.clearWatch(gpsWatchId);
+      }
+    };
+  }, [gpsWatchId]);
 
   const toggleVoice = useCallback(() => {
     if (sttStatus === 'listening') {
@@ -316,7 +361,7 @@ export default function App() {
   }
 
   // Desktop Interface
-  const weeklyDays = forecastList.length > 0 ? toWeeklyDays(forecastList) : placeholderWeeklyDays();  return (
+  return (
     <div className="simple-weathergpt">
       <div className="glass-orb glass-orb-1" aria-hidden="true" />
         <div className="glass-orb glass-orb-2" aria-hidden="true" />
@@ -432,7 +477,15 @@ export default function App() {
 
           <div className="header-actions">
             <button className="header-action-btn" onClick={handleUseMyLocation} title="Use My Location" aria-label="Use My Location">
-              <MapPin size={16} />
+              {gpsWatching && gpsCoords ? (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
+                  <span style={{ color: gpsCoords.accuracy <= 50 ? '#10b981' : '#f59e0b' }}>●</span>
+                  <MapPin size={13} />
+                  <span style={{ color: '#94a3b8' }}>GPS {Math.round(gpsCoords.accuracy)}m</span>
+                </span>
+              ) : (
+                <MapPin size={16} />
+              )}
             </button>
             <button className={`header-action-btn voice-btn ${sttStatus === 'listening' ? 'active' : ''}`} onClick={toggleVoice} disabled={!sttSupported} title="Voice Query" aria-label="Voice Query">
               <Mic size={16} />
@@ -747,8 +800,6 @@ export default function App() {
           <p>WeatherGPT Platform • Ministry of Earth Sciences (MoES) / IMD Mission • Open-Meteo & WIS 2.0 Telemetry</p>
         </footer>
       </main>
-
-      <WeeklyForecastFooter days={weeklyDays} cityName={currentCity} activeIndex={3} />
 
       <ChatDrawer
         isOpen={chatDrawerOpen}
