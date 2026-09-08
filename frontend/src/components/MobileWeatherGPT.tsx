@@ -458,7 +458,7 @@ export default function MobileWeatherGPT() {
 
     setGpsWatchId(watchId);
     setGpsWatching(true);
-  }, [gpsWatchId, loadAdvisoriesForLocation]);
+  }, [gpsWatchId ]);
 
   /*
    * Tear down the GPS watch whenever the component unmounts

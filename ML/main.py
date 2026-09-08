@@ -1,18 +1,12 @@
-import pandas as pd
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from model import model
-from schemas import (
-    CropPredictionRequest,
-    CropPredictionResponse,
-)
+from pydantic import BaseModel
+from agent import build_agent
 
 
 app = FastAPI(
     title="Crop Recommendation API",
-    description="ML API for recommending crops based on soil and weather conditions.",
+    description="ML API for crop recommendation and WeatherGPT agent.",
     version="1.0.0",
 )
 
@@ -30,51 +24,44 @@ app.add_middleware(
 @app.get("/")
 def root():
     return {
-        "message": "Crop Recommendation API is running"
+        "message": "welcome to weatherGPT"
     }
 
 
-@app.get("/health")
-def health():
-    return {
-        "status": "healthy"
-    }
+# ---------------------------------------------------------
+# Weather Agent
+# ---------------------------------------------------------
 
-
-@app.post(
-    "/predict",
-    response_model=CropPredictionResponse,
+agent = build_agent(
+    model_name="gemma4",
+    base_url="http://localhost:11434",
 )
-def predict_crop(data: CropPredictionRequest):
 
-    input_data = pd.DataFrame(
-        [[
-            data.N,
-            data.P,
-            data.K,
-            data.temperature,
-            data.humidity,
-            data.ph,
-            data.rainfall,
-        ]],
-        columns=[
-            "N",
-            "P",
-            "K",
-            "temperature",
-            "humidity",
-            "ph",
-            "rainfall",
-        ],
+
+class AgentRequest(BaseModel):
+    prompt: str
+
+
+class AgentResponse(BaseModel):
+    message: str
+
+
+@app.post("/agent", response_model=AgentResponse)
+def weather_agent(request: AgentRequest):
+
+    result = agent.invoke(
+        {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": request.prompt,
+                }
+            ]
+        }
     )
 
-    prediction = model.predict(input_data)[0]
-
-    probabilities = model.predict_proba(input_data)[0]
-
-    confidence = float(max(probabilities))
+    response = result["messages"][-1].content
 
     return {
-        "crop": prediction,
-        "confidence": confidence,
+        "message": response
     }

@@ -232,7 +232,7 @@ export default function App() {
     };
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        const { latitude, longitude, accuracy, altitudeAccuracy } = pos.coords;
+        const { latitude, longitude, accuracy } = pos.coords;
         const precise = accuracy !== null && accuracy <= 50;
         setCurrentCity(`${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
         setGpsCoords({ latitude, longitude, accuracy: accuracy ?? 0 });
