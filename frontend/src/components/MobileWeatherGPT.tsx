@@ -47,8 +47,8 @@ const LANGUAGES = [
 export default function MobileWeatherGPT() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("chat");
 
-  // Language
-  const [selectedLang, setSelectedLang] = useState("en");
+  // Language is fixed to English because the language selector was removed.
+  const selectedLang = "en";
 
   // Location
   const [currentCity, setCurrentCity] = useState("Delhi");
