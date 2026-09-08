@@ -3,8 +3,8 @@ import pandas as pd
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.model import model
-from app.schemas import (
+from model import model
+from schemas import (
     CropPredictionRequest,
     CropPredictionResponse,
 )
