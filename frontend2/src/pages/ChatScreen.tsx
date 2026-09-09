@@ -116,6 +116,13 @@ const IconSend = () => (
   </svg>
 );
 
+const IconPin = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21z" />
+    <circle cx="12" cy="9.5" r="2.3" />
+  </svg>
+);
+
 const IconMenu = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M4 6h16M4 12h16M4 18h16" />
@@ -396,10 +403,21 @@ const routeStyles: { [key: string]: React.CSSProperties } = {
 /* ----------------------------------------------------
    MAIN APP COMPONENT
 ---------------------------------------------------- */
+interface Coordinates {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+}
+
+type LocationStatus = "pending" | "granted" | "denied" | "unsupported";
+
 export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const [location, setLocation] = useState<Coordinates | null>(null);
+  const [locationStatus, setLocationStatus] = useState<LocationStatus>("pending");
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth > 768 : true
@@ -408,6 +426,34 @@ export default function ChatScreen() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const requestLocation = () => {
+    if (!("geolocation" in navigator)) {
+      setLocationStatus("unsupported");
+      return;
+    }
+    setLocationStatus("pending");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocation({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        });
+        setLocationStatus("granted");
+      },
+      () => {
+        setLocation(null);
+        setLocationStatus("denied");
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 5 * 60 * 1000 }
+    );
+  };
+
+  // Ask for location once on load so it's ready by the time the first message sends.
+  useEffect(() => {
+    requestLocation();
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -435,7 +481,12 @@ export default function ChatScreen() {
       const response = await fetch(`${API_URL}/agent`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({
+          prompt,
+          location: location
+            ? { latitude: location.latitude, longitude: location.longitude, accuracy: location.accuracy }
+            : null,
+        }),
       });
 
       if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
@@ -515,6 +566,22 @@ export default function ChatScreen() {
           </div>
 
           <div className="header-right">
+            <button
+              className={`location-indicator ${locationStatus}`}
+              onClick={() => locationStatus !== "pending" && requestLocation()}
+              title={
+                locationStatus === "granted"
+                  ? "Sharing your location with WeatherGPT"
+                  : locationStatus === "denied"
+                  ? "Location blocked — click to try again"
+                  : locationStatus === "unsupported"
+                  ? "Location isn't available in this browser"
+                  : "Requesting your location…"
+              }
+              aria-label="Location status"
+            >
+              <IconPin />
+            </button>
             {activeNav === "chat" && messages.length > 0 && (
               <button onClick={clearChat} className="clear-chat-btn">Clear chat</button>
             )}
