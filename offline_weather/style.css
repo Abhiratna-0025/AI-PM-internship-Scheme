@@ -1,0 +1,243 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background: #f3f6fa;
+    color: #222;
+}
+
+.container {
+    width: 95%;
+    max-width: 1100px;
+    margin: 30px auto;
+}
+
+
+/* Header */
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    margin-bottom: 20px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+}
+
+header h1 {
+    margin-bottom: 5px;
+}
+
+header p {
+    color: #666;
+}
+
+.status {
+    padding: 10px 15px;
+    border-radius: 20px;
+    font-weight: bold;
+}
+
+.status.online {
+    background: #e7f8ed;
+    color: #218838;
+}
+
+.status.offline {
+    background: #fff0f0;
+    color: #d93025;
+}
+
+
+/* Search */
+
+.search-box {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.search-box input {
+    flex: 1;
+    padding: 14px;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    font-size: 16px;
+}
+
+.search-box button {
+    padding: 14px 22px;
+    border: none;
+    border-radius: 10px;
+    background: #2563eb;
+    color: white;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.search-box button:hover {
+    background: #1d4ed8;
+}
+
+
+/* Current Weather */
+
+.current-weather {
+    background: white;
+    border-radius: 15px;
+    padding: 25px;
+    margin-bottom: 25px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 20px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+}
+
+.current-temperature {
+    font-size: 50px;
+    font-weight: bold;
+}
+
+.current-weather p {
+    margin-top: 7px;
+    color: #555;
+}
+
+
+/* Forecast Sections */
+
+.forecast-section {
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    margin-bottom: 25px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+}
+
+.forecast-section h2 {
+    margin-bottom: 15px;
+}
+
+
+/* Hourly Forecast */
+
+.hourly-container {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 10px;
+}
+
+.hour-card {
+    min-width: 120px;
+    background: #f5f8ff;
+    border-radius: 12px;
+    padding: 15px;
+    text-align: center;
+    border: 1px solid #e3e8f0;
+}
+
+.hour-card .time {
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.hour-card .temperature {
+    font-size: 25px;
+    font-weight: bold;
+    margin: 10px 0;
+}
+
+.hour-card p {
+    margin-top: 6px;
+    font-size: 13px;
+    color: #555;
+}
+
+
+/* Daily Forecast */
+
+.daily-container {
+    display: grid;
+    gap: 10px;
+}
+
+.day-card {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 1fr 1fr;
+    align-items: center;
+    padding: 15px;
+    background: #f7f9fc;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+}
+
+.day-card strong {
+    font-size: 16px;
+}
+
+.day-card span {
+    color: #555;
+}
+
+
+/* Offline information */
+
+.offline-info {
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    margin-bottom: 30px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+}
+
+.offline-info h3 {
+    margin-bottom: 10px;
+}
+
+.offline-info p {
+    color: #555;
+    margin-top: 7px;
+}
+
+
+/* Empty message */
+
+.empty-message {
+    color: #777;
+    padding: 15px;
+}
+
+
+/* Mobile */
+
+@media (max-width: 700px) {
+
+    header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 15px;
+    }
+
+    .search-box {
+        flex-direction: column;
+    }
+
+    .current-weather {
+        grid-template-columns: 1fr;
+        text-align: center;
+    }
+
+    .day-card {
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+
+}

@@ -1,0 +1,11 @@
+{
+    "name": "WeatherGPT Offline Weather",
+    "short_name": "WeatherGPT",
+    "description": "WeatherGPT weather service for low-connectivity environments.",
+    "start_url": "./index.html",
+    "display": "standalone",
+    "background_color": "#020617",
+    "theme_color": "#0f172a",
+    "orientation": "portrait-primary",
+    "icons": []
+}

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>WeatherGPT Offline Mode</title>
+
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+
+<body>
+
+<div class="container">
+
+    <header>
+        <div>
+            <h1>🌤️ WeatherGPT</h1>
+            <p>Offline Weather Mode</p>
+        </div>
+
+        <div id="connectionStatus" class="status online">
+            🟢 Online
+        </div>
+    </header>
+
+
+    <!-- Search -->
+
+    <section class="search-box">
+
+        <input
+            type="text"
+            id="locationInput"
+            placeholder="Enter city e.g. Delhi"
+        >
+
+        <button id="searchBtn">
+            Get Weather
+        </button>
+
+    </section>
+
+
+    <!-- Current Weather -->
+
+    <section id="currentWeather" class="current-weather">
+
+        <div>
+            <h2 id="locationName">Delhi</h2>
+            <p id="lastUpdated">No saved data</p>
+        </div>
+
+        <div class="current-temperature">
+            <span id="currentTemp">--</span>°C
+        </div>
+
+        <div>
+            <p id="currentCondition">--</p>
+            <p>💧 Humidity: <span id="currentHumidity">--</span>%</p>
+            <p>💨 Wind: <span id="currentWind">--</span> km/h</p>
+        </div>
+
+    </section>
+
+
+    <!-- 24 Hour Forecast -->
+
+    <section class="forecast-section">
+
+        <h2>🕐 24-Hour Forecast</h2>
+
+        <div id="hourlyForecast" class="hourly-container">
+
+            <p class="empty-message">
+                Search for a location to load the forecast.
+            </p>
+
+        </div>
+
+    </section>
+
+
+    <!-- 7 Day Forecast -->
+
+    <section class="forecast-section">
+
+        <h2>📅 7-Day Forecast</h2>
+
+        <div id="dailyForecast" class="daily-container">
+
+            <p class="empty-message">
+                Search for a location to load the forecast.
+            </p>
+
+        </div>
+
+    </section>
+
+
+    <!-- Offline information -->
+
+    <section class="offline-info">
+
+        <h3>📦 Offline Weather Storage</h3>
+
+        <p>
+            The latest 24-hour and 7-day forecasts are stored
+            on this device and can be viewed without internet.
+        </p>
+
+        <p id="storageStatus">
+            No forecast stored yet.
+        </p>
+
+    </section>
+
+</div>
+
+
+<script src="app.js"></script>
+
+</body>
+</html>
